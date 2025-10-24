@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patchtree"
+description = "generate clean patches for external source trees"
+version = "0.1.0"
+authors = [
+	{ name="Loek Le Blansch", email="loek.le-blansch.pv@renesas.com" },
+]
+readme = "readme.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["license"]
+dependencies = [
+	"jinja2",
+]
+
+[project.urls]
+Homepage = "https://bitbucket.global.renesas.com/users/loek.le-blansch.pv_renesas.com/repos/patchtree"
+
+[project.scripts]
+patchtree = "patchtree.cli:main"
+
