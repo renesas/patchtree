@@ -27,6 +27,12 @@ def parse_arguments(config: Config) -> Context:
         help="output file (stdout by default)",
         type=str,
     )
+    parser.add_argument(
+        "-i",
+        "--in-place",
+        help="patch target in-place",
+        action="store_true",
+    )
     parser.add_argument("target", help="target directory or archive")
     parser.add_argument("patch", help="patch input glob(s)", nargs="+")
 
@@ -60,9 +66,6 @@ def main():
     for file in files:
         patch = config.patch(config, file)
         patch.write(context)
-
-    context.output.flush()
-    context.output.close()
 
     return 0
 
