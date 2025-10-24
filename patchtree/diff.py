@@ -16,14 +16,16 @@ class Diff:
     self.file = file
 
   def compare(self) -> str:
-    a = [] if self.content_a is None else self.content_a.splitlines()
-    fromfile = "/dev/null" if self.content_a is None else f"a/{self.file}"
-
-    b = self.content_b.strip().splitlines()
-    b = [line.rstrip() for line in b]
+    fromfile = f"a/{self.file}"
     tofile = f"b/{self.file}"
 
-    diff = unified_diff(a, b, fromfile, tofile, n=0, lineterm="")
+    if self.content_a is None:
+      fromfile = "/dev/null"
+      self.content_a = ""
+
+    a = self.content_a.splitlines()
+    b = self.content_b.splitlines()
+    diff = unified_diff(a, b, fromfile, tofile, lineterm="")
     return "\n".join(diff) + "\n"
 
   def diff(self) -> str:
@@ -37,9 +39,7 @@ class IgnoreDiff(Diff):
   """
 
   def diff(self):
-    if self.content_a is None:
-      self.content_a = ""
-    lines_a = self.content_a.splitlines()
+    lines_a = (self.content_a or "").splitlines()
     lines_b = self.content_b.splitlines()
 
     add_lines = set(lines_b) - set(lines_a)
