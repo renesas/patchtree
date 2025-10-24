@@ -31,6 +31,7 @@ class Patch:
       self.processors = self.file_name[idx:].split(config.process_delimiter)
       self.processors = [template.strip() for template in self.processors]
       self.processors = [template for template in self.processors if len(template) > 0]
+      self.processors.reverse()
       self.file_name = self.file_name[:idx]
 
     # save the path to the target file
@@ -60,13 +61,15 @@ class Patch:
     diff = diff_class(self.file)
 
     # read file A contents
-    diff.content_a = context.get_content(self.file)
+    content_a = context.get_content(self.file)
 
     # read file B contents
     content_b = self.patch.read_text()
     for processor_class in processor_classes:
       processor = processor_class(context)
-      content_b = processor.transform(content_b)
+      content_b = processor.transform(content_a, content_b)
+
+    diff.content_a = content_a
     diff.content_b = content_b
 
     delta = diff.diff()

@@ -36,7 +36,6 @@ def parse_arguments(config: Config) -> Context:
 
 def main():
   config = load_config()
-  print(config)
 
   context = parse_arguments(config)
 
