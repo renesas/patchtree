@@ -47,4 +47,3 @@ class IgnoreDiff(Diff):
     self.content_b = "\n".join((*lines_a, *add_lines,))
 
     return self.compare()
-

@@ -54,4 +54,3 @@ class Config:
   def __post_init__(self):
     self.processors = {**DEFAULT_PROCESSORS, **self.processors}
     self.diff_strategies = {**DEFAULT_DIFFS, **self.diff_strategies}
-

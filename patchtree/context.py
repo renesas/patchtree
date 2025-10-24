@@ -45,4 +45,3 @@ class Context:
     if not here.exists():
       return None
     return here.read_bytes().decode()
-

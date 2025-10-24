@@ -74,4 +74,3 @@ class Patch:
 
     delta = diff.diff()
     context.output.write(delta)
-

@@ -59,4 +59,3 @@ class ProcessCoccinelle(Process):
     temp_sp.unlink()
 
     return content_b
-
