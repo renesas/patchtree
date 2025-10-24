@@ -54,7 +54,7 @@ class Patch:
       processors.append(self.config.processors[processor])
     return processors
 
-  def write_diff(self, context: Context) -> None:
+  def write(self, context: Context) -> None:
     diff_class = self.get_diff()
     processor_classes = self.get_processors()
 

@@ -35,6 +35,9 @@ class ProcessCoccinelle(Process):
   def transform(self, content_a, content_b) -> str:
     content_a = content_a or ""
 
+    if len(content_b.strip()) == 0:
+      return content_a
+
     temp_a = Path(mkstemp()[1])
     temp_b = Path(mkstemp()[1])
     temp_sp = Path(mkstemp()[1])

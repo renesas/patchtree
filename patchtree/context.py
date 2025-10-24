@@ -22,6 +22,12 @@ class Context:
     if not path.exists(target):
       raise Exception(f"cannot open `{target}'")
 
+    if options.out is not None:
+      if options.out == "-":
+        self.output = stdout
+      else:
+        self.output = open(options.out, "w+")
+
     if path.isdir(target):
       self.fs = DiskPath(target)
     elif is_zipfile(target):

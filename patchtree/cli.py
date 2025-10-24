@@ -51,9 +51,11 @@ def main():
     print("no files to patch!", file=stderr)
     return 0
 
+  config.header(context)
+
   for file in files:
     patch = config.patch(config, file)
-    patch.write_diff(context)
+    patch.write(context)
 
   context.output.flush()
   context.output.close()
