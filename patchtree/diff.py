@@ -33,10 +33,14 @@ class Diff:
         """
         a = self.a
         b = self.b
-        fromfile = f"a/{self.file}"
-        tofile = f"b/{self.file}"
+
+        if a == b:
+            return ""
 
         assert (a.content or b.content) is not None
+
+        fromfile = f"a/{self.file}"
+        tofile = f"b/{self.file}"
 
         delta = f"diff --git {fromfile} {tofile}\n"
 

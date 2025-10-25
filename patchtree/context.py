@@ -43,7 +43,11 @@ class DiskFS(FS):
         here = self.path.joinpath(file)
         if not here.exists():
             return None
-        return here.read_bytes().decode()
+        bytes = here.read_bytes()
+        try:
+            return bytes.decode()
+        except:
+            return ""
 
     def get_mode(self, file: str) -> int:
         here = self.path.joinpath(file)
@@ -83,7 +87,11 @@ class ZipFS(FS):
         info = self.get_info(file)
         if info is None:
             return None
-        return self.zip.read(info).decode()
+        bytes = self.zip.read(info)
+        try:
+            return bytes.decode()
+        except:
+            return ""
 
     def get_mode(self, file: str) -> int:
         info = self.get_info(file)

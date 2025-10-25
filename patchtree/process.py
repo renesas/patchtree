@@ -72,3 +72,8 @@ class ProcessCoccinelle(Process):
         temp_sp.unlink()
 
         return b
+
+
+class ProcessTouch(Process):
+    def transform(self, a, b):
+        return DiffFile(content=a.content, mode=b.mode)

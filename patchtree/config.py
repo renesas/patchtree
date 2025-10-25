@@ -11,6 +11,7 @@ DEFAULT_PROCESSORS: dict[str, type[Process]] = {
     "jinja": ProcessJinja2,
     "cocci": ProcessCoccinelle,
     "smpl": ProcessCoccinelle,
+    "touch": ProcessTouch,
 }
 
 DEFAULT_DIFFS: dict[str, type[Diff]] = {
