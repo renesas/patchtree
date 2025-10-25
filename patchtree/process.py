@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, Any
 
 from tempfile import mkstemp
 from jinja2 import Environment
-from subprocess import Popen
+from subprocess import Popen, run
 from pathlib import Path
+from shlex import split as shell_split
 
 from .diff import DiffFile
 
@@ -77,3 +78,24 @@ class ProcessCoccinelle(Process):
 class ProcessTouch(Process):
     def transform(self, a, b):
         return DiffFile(content=a.content, mode=b.mode)
+
+
+class ProcessExec(Process):
+    def transform(self, a, b):
+        assert b.content is not None
+
+        exec = Path(mkstemp()[1])
+        exec.write_text(b.content)
+
+        cmd = [str(exec)]
+
+        if b.content.startswith("#!"):
+            shebang = b.content.split("\n", 1)[0][2:]
+            cmd = [*shell_split(shebang), *cmd]
+
+        proc = run(cmd, text=True, input=a.content, capture_output=True)
+        b.content = proc.stdout
+
+        exec.unlink()
+
+        return b
