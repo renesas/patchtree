@@ -1,4 +1,14 @@
+from dataclasses import dataclass
 from difflib import unified_diff
+
+
+@dataclass
+class DiffFile:
+    content: str | None
+    mode: int
+
+    def lines(self) -> list[str]:
+        return (self.content or "").splitlines()
 
 
 class Diff:
@@ -10,24 +20,44 @@ class Diff:
 
     file: str
 
-    content_a: str | None
-    content_b: str = ""
+    a: DiffFile
+    b: DiffFile
 
     def __init__(self, file: str):
         self.file = file
 
     def compare(self) -> str:
+        """
+        Generate patch text in "git-diff-files -p" format (see https:
+        //git-scm.com/docs/diff-format#generate_patch_text_with_p)
+        """
+        a = self.a
+        b = self.b
         fromfile = f"a/{self.file}"
         tofile = f"b/{self.file}"
 
-        if self.content_a is None:
-            fromfile = "/dev/null"
-            self.content_a = ""
+        assert (a.content or b.content) is not None
 
-        a = self.content_a.splitlines()
-        b = self.content_b.splitlines()
-        diff = unified_diff(a, b, fromfile, tofile, lineterm="")
-        return "\n".join(diff) + "\n"
+        delta = f"diff --git {fromfile} {tofile}\n"
+
+        if a.content is None:
+            fromfile = "/dev/null"
+            delta += f"new file mode {b.mode:06o}\n"
+
+        if b.content is None:
+            tofile = "/dev/null"
+            delta += f"deleted file mode {a.mode:06o}\n"
+
+        if a.content is not None and b.content is not None and a.mode != b.mode:
+            delta += f"old mode {a.mode:06o}\n"
+            delta += f"new mode {b.mode:06o}\n"
+
+        lines_a = a.lines()
+        lines_b = b.lines()
+        diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="")
+        delta += "".join(f"{line}\n" for line in diff)
+
+        return delta
 
     def diff(self) -> str:
         return self.compare()
@@ -41,12 +71,12 @@ class IgnoreDiff(Diff):
     """
 
     def diff(self):
-        lines_a = (self.content_a or "").splitlines()
-        lines_b = self.content_b.splitlines()
+        lines_a = self.a.lines()
+        lines_b = self.b.lines()
 
         add_lines = set(lines_b) - set(lines_a)
 
-        self.content_b = "\n".join(
+        self.b.content = "\n".join(
             (
                 *lines_a,
                 *add_lines,

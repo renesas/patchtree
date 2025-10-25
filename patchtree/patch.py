@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from pathlib import Path
 
-from .diff import Diff
+from .diff import Diff, DiffFile
 
 if TYPE_CHECKING:
     from .process import Process
@@ -63,17 +63,18 @@ class Patch:
 
         diff = diff_class(self.file)
 
-        # read file A contents
-        content_a = context.get_content(self.file)
+        diff.a = DiffFile(
+            content=context.get_content(self.file),
+            mode=context.get_mode(self.file),
+        )
 
-        # read file B contents
-        content_b = self.patch.read_text()
+        diff.b = DiffFile(
+            content=self.patch.read_text(),
+            mode=self.patch.stat().st_mode,
+        )
         for processor_class in processor_classes:
             processor = processor_class(context)
-            content_b = processor.transform(content_a, content_b)
-
-        diff.content_a = content_a
-        diff.content_b = content_b
+            diff.b = processor.transform(diff.a, diff.b)
 
         delta = diff.diff()
         context.output.write(delta)

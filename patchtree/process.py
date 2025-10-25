@@ -6,6 +6,8 @@ from jinja2 import Environment
 from subprocess import Popen
 from pathlib import Path
 
+from .diff import DiffFile
+
 if TYPE_CHECKING:
     from .context import Context
 
@@ -16,8 +18,8 @@ class Process:
     def __init__(self, context: Context):
         self.context = context
 
-    def transform(self, content_a: str | None, content_b: str) -> str:
-        return content_b
+    def transform(self, a: DiffFile, b: DiffFile) -> DiffFile:
+        return b
 
 
 class ProcessJinja2(Process):
@@ -26,20 +28,23 @@ class ProcessJinja2(Process):
         lstrip_blocks=True,
     )
 
-    def transform(self, content_a, content_b) -> str:
+    def transform(self, a, b):
         template_vars = self.get_template_vars()
-        return self.environment.from_string(content_b).render(**template_vars)
+        assert b.content is not None
+        b.content = self.environment.from_string(b.content).render(**template_vars)
+        return b
 
     def get_template_vars(self) -> dict[str, Any]:
         return {}
 
 
 class ProcessCoccinelle(Process):
-    def transform(self, content_a, content_b) -> str:
-        content_a = content_a or ""
+    def transform(self, a, b):
+        content_a = a.content or ""
+        content_b = b.content or ""
 
         if len(content_b.strip()) == 0:
-            return content_a
+            return a
 
         temp_a = Path(mkstemp()[1])
         temp_b = Path(mkstemp()[1])
@@ -60,10 +65,10 @@ class ProcessCoccinelle(Process):
         coccinelle = Popen(cmd)
         coccinelle.wait()
 
-        content_b = temp_b.read_text()
+        b.content = temp_b.read_text()
 
         temp_a.unlink()
         temp_b.unlink()
         temp_sp.unlink()
 
-        return content_b
+        return b

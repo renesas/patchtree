@@ -33,6 +33,8 @@ class Context:
                 )
 
     def __del__(self):
+        # patch must have a trailing newline
+        self.output.write("\n")
         self.output.flush()
 
         if self.options.in_place:
@@ -57,6 +59,14 @@ class Context:
         if not here.exists():
             return None
         return here.read_bytes().decode()
+
+    def get_mode(self, file: str) -> int:
+        # TODO
+        return 0
+        here = self.fs.joinpath(file)
+        if not here.exists():
+            return 0
+        return here.stat().st_mode
 
     def get_fs(self) -> Path:
         target: str = self.options.target
