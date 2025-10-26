@@ -109,21 +109,13 @@ class Context:
     output: IO
     options: Namespace
 
-    cache: Path
-
     def __init__(self, options: Namespace):
         self.options = options
         self.fs = self.get_fs()
         self.output = self.get_output()
 
         if self.options.in_place:
-            location = cast(DiskFS, self.fs).path
-            self.cache = location.joinpath(".patchtree.diff")
-            if self.cache.exists():
-                run(
-                    ("git", "apply", "--reverse", str(self.cache.absolute())),
-                    cwd=str(location.absolute()),
-                )
+            self.apply(True)
 
     def __del__(self):
         # patch must have a trailing newline
@@ -131,15 +123,7 @@ class Context:
         self.output.flush()
 
         if self.options.in_place:
-            self.output.seek(0)
-            patch = self.output.read()
-            location = cast(DiskFS, self.fs).path
-            if len(patch) > 0:
-                self.cache.write_text(patch)
-                run(
-                    ("git", "apply", str(self.cache.absolute())),
-                    cwd=str(location.absolute()),
-                )
+            self.apply(False)
 
         self.output.close()
 
@@ -181,3 +165,26 @@ class Context:
                 return open(self.options.out, "w+")
 
         return stdout
+
+    def apply(self, reverse: bool) -> None:
+        location = cast(DiskFS, self.fs).path
+        cache = location.joinpath(".patchtree.diff")
+
+        cmd = [
+            "git",
+            "apply",
+            "--unidiff-zero",
+            "--allow-empty",
+        ]
+
+        if reverse:
+            if not cache.exists():
+                return
+            cmd.append("--reverse")
+        else:
+            self.output.seek(0)
+            patch = self.output.read()
+            cache.write_text(patch)
+
+        cmd.append(str(cache.absolute()))
+        run(cmd, cwd=str(location.absolute()))

@@ -61,7 +61,7 @@ class Patch:
         diff_class = self.get_diff()
         processor_classes = self.get_processors()
 
-        diff = diff_class(self.file)
+        diff = diff_class(self.config, self.file)
 
         diff.a = DiffFile(
             content=context.get_content(self.file),

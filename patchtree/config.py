@@ -58,6 +58,7 @@ class Config:
         default_factory=lambda: DEFAULT_DIFFS
     )
     header: type[Header] = Header
+    diff_context: int = 3
 
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}

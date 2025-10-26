@@ -1,5 +1,11 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 from dataclasses import dataclass
 from difflib import unified_diff
+
+if TYPE_CHECKING:
+    from .config import Config
 
 
 @dataclass
@@ -18,12 +24,14 @@ class Diff:
     with the file in the patch directory.
     """
 
+    config: Config
     file: str
 
     a: DiffFile
     b: DiffFile
 
-    def __init__(self, file: str):
+    def __init__(self, config: Config, file: str):
+        self.config = config
         self.file = file
 
     def compare(self) -> str:
@@ -58,7 +66,9 @@ class Diff:
 
         lines_a = a.lines()
         lines_b = b.lines()
-        diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="")
+        diff = unified_diff(
+            lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context
+        )
         delta += "".join(f"{line}\n" for line in diff)
 
         return delta

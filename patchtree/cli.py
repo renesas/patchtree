@@ -33,10 +33,19 @@ def parse_arguments(config: Config) -> Context:
         help="patch target in-place",
         action="store_true",
     )
+    parser.add_argument(
+        "-c",
+        "--context",
+        help="lines of context in output diff",
+        type=int,
+    )
     parser.add_argument("target", help="target directory or archive")
     parser.add_argument("patch", help="patch input glob(s)", nargs="+")
 
     options = parser.parse_args()
+
+    if options.context is not None:
+        config.diff_context = options.context
 
     try:
         return config.context(options)
