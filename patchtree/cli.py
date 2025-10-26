@@ -39,6 +39,12 @@ def parse_arguments(config: Config) -> Context:
         help="lines of context in output diff",
         type=int,
     )
+    parser.add_argument(
+        "-s",
+        "--shebang",
+        help="output shebang in resulting patch",
+        action="store_true",
+    )
     parser.add_argument("target", help="target directory or archive")
     parser.add_argument("patch", help="patch input glob(s)", nargs="+")
 
@@ -47,8 +53,11 @@ def parse_arguments(config: Config) -> Context:
     if options.context is not None:
         config.diff_context = options.context
 
+    if options.shebang:
+        config.output_shebang = True
+
     try:
-        return config.context(options)
+        return config.context(config, options)
     except Exception as e:
         parser.error(str(e))
 
@@ -70,7 +79,7 @@ def main():
         print("no files to patch!", file=stderr)
         return 0
 
-    config.header(context)
+    config.header(config, context)
 
     for file in files:
         patch = config.patch(config, file)

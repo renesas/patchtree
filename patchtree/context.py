@@ -1,5 +1,7 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING, IO, cast
+
 from argparse import Namespace
-from typing import IO, cast
 from pathlib import Path
 from zipfile import ZipInfo, is_zipfile
 from tempfile import TemporaryFile
@@ -8,6 +10,9 @@ from sys import stdout, stderr
 from subprocess import run
 from zipfile import ZipFile
 from stat import S_IFDIR, S_IFREG
+
+if TYPE_CHECKING:
+    from .config import Config
 
 ZIP_CREATE_SYSTEM_UNX = 3
 
@@ -107,10 +112,14 @@ class ZipFS(FS):
 class Context:
     fs: FS
     output: IO
+
+    config: Config
     options: Namespace
 
-    def __init__(self, options: Namespace):
+    def __init__(self, config: Config, options: Namespace):
+        self.config = config
         self.options = options
+
         self.fs = self.get_fs()
         self.output = self.get_output()
 
@@ -166,16 +175,20 @@ class Context:
 
         return stdout
 
-    def apply(self, reverse: bool) -> None:
-        location = cast(DiskFS, self.fs).path
-        cache = location.joinpath(".patchtree.diff")
-
+    def get_apply_cmd(self) -> list[str]:
         cmd = [
             "git",
             "apply",
-            "--unidiff-zero",
             "--allow-empty",
         ]
+        if self.config.diff_context == 0:
+            cmd.append("--unidiff-zero")
+        return cmd
+
+    def apply(self, reverse: bool) -> None:
+        location = cast(DiskFS, self.fs).path
+        cache = location.joinpath(".patchtree.diff")
+        cmd = self.get_apply_cmd()
 
         if reverse:
             if not cache.exists():
