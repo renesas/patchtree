@@ -31,9 +31,7 @@ class Patch:
         if idx >= 0:
             self.processors = self.file_name[idx:].split(config.process_delimiter)
             self.processors = [template.strip() for template in self.processors]
-            self.processors = [
-                template for template in self.processors if len(template) > 0
-            ]
+            self.processors = [template for template in self.processors if len(template) > 0]
             self.processors.reverse()
             self.file_name = self.file_name[:idx]
 

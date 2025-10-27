@@ -20,8 +20,9 @@ class DiffFile:
 class Diff:
     """
     The base Diff class just produces a regular diff from the (possibly absent)
-    SDK10 file. This effectively adds a new file or replaces the SDK10 source file
-    with the file in the patch directory.
+    original file to the file in the patch input tree. This effectively
+    overwrites whatever exists in the target sources with the file in the patch
+    input tree.
     """
 
     config: Config
@@ -36,8 +37,8 @@ class Diff:
 
     def compare(self) -> str:
         """
-        Generate patch text in "git-diff-files -p" format (see https:
-        //git-scm.com/docs/diff-format#generate_patch_text_with_p)
+        Generate patch text in "git-diff-files -p" format (see
+        `<https://git-scm.com/docs/diff-format#generate_patch_text_with_p>`_)
         """
         a = self.a
         b = self.b
@@ -66,9 +67,7 @@ class Diff:
 
         lines_a = a.lines()
         lines_b = b.lines()
-        diff = unified_diff(
-            lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context
-        )
+        diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context)
         delta += "".join(f"{line}\n" for line in diff)
 
         return delta
@@ -79,9 +78,9 @@ class Diff:
 
 class IgnoreDiff(Diff):
     """
-    IgnoreDiff is slightly different and is used to ensure all the lines in the
-    patch source ignore file are present in the SDK version. This ensures no
-    duplicate ignore lines exist after patching.
+    IgnoreDiff is ensures all the lines in the patch source are present in the
+    target. This ensures no duplicate ignore lines are added by applying the
+    patch.
     """
 
     def diff(self):

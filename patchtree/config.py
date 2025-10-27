@@ -23,6 +23,10 @@ DEFAULT_DIFFS: dict[str, type[Diff]] = {
 
 
 class Header:
+    """
+    Patch output header.
+    """
+
     config: Config
     context: Context
 
@@ -64,19 +68,39 @@ class Header:
 
 @dataclass
 class Config:
+    """
+    Configuration dataclass.
+
+    This class contains all configuration options read from the :ref: `configuration file <config>`.
+    """
+
     context: type[Context] = Context
+    """Context class type."""
+
     patch: type[Patch] = Patch
+    """Patch class type."""
+
     argument_parser: type[ArgumentParser] = ArgumentParser
+    """ArgumentParser class type."""
+
     process_delimiter: str = "#"
-    processors: dict[str, type[Process]] = field(
-        default_factory=lambda: DEFAULT_PROCESSORS
-    )
-    diff_strategies: dict[str, type[Diff]] = field(
-        default_factory=lambda: DEFAULT_DIFFS
-    )
+    """String used to delimit processors in patch source filenames."""
+
+    processors: dict[str, type[Process]] = field(default_factory=lambda: DEFAULT_PROCESSORS)
+    """Maps processor specification string to :type:`Process` class type."""
+
+    diff_strategies: dict[str, type[Diff]] = field(default_factory=lambda: DEFAULT_DIFFS)
+    """Maps processor specification string to :type:`Process` class type."""
+
     header: type[Header] = Header
+    """Header class type."""
+
     diff_context: int = 3
+    """Lines of context to include in the default diffs."""
+
     output_shebang: bool = False
+    """Whether to output a shebang line with the ``git patch`` command to apply
+    the patch."""
 
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}

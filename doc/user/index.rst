@@ -1,0 +1,38 @@
+User docs
+=========
+
+.. note::
+
+   By convention, the patch file should be placed in the root of the target directory under the filename ``.patchtree.diff``.
+   This allows you to easily revert and/or upgrade the patch later.
+
+.. important::
+
+   If you keep the target directory under version control, make sure the repository root is the same as the root of the patch's target directory.
+   Patches produced by patchtree contain *extended header lines* which are be interpreted by ``git apply``.
+   Because these header lines must include the path to each modified file relative to the repository root, any files which don't exist at the expected location will be skipped silently by ``git``.
+
+Applying a patch
+****************
+
+To apply patches output by patchtree, download the ``.patch`` file and place it in the directory where it should apply the changes under the name ``.patchtree.diff``.
+
+To apply the patch, run the following command in the target directory::
+
+  $ git apply .patchtree.diff
+
+Reverting a patch
+*****************
+
+To revert the changes of a patch, run the following command in the target directory::
+
+  $ git apply --reverse .patchtree.diff
+
+Upgrading a patch
+*****************
+
+Upgrading a patch consists of
+
+#. reverting the current (old) patch
+#. downloading and replacing the ``.patchtree.diff`` file with the new patch
+#. reapplying the patch file

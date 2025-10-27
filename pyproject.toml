@@ -22,3 +22,6 @@ Homepage = "https://bitbucket.global.renesas.com/users/loek.le-blansch.pv_renesa
 
 [project.scripts]
 patchtree = "patchtree.cli:main"
+
+[tool.black]
+line-length = 110

@@ -14,16 +14,32 @@ if TYPE_CHECKING:
 
 
 class Process:
+    """
+    Processor base interface.
+    """
+
     context: Context
+    """Patch file context."""
 
     def __init__(self, context: Context):
         self.context = context
 
     def transform(self, a: DiffFile, b: DiffFile) -> DiffFile:
-        return b
+        """
+        Transform the input file.
+
+        :param a: content of file to patch
+        :param b: content of patch input (in patch tree)
+        :returns: processed file
+        """
+        raise NotImplementedError()
 
 
 class ProcessJinja2(Process):
+    """
+    Jinja2 preprocessor.
+    """
+
     environment: Environment = Environment(
         trim_blocks=True,
         lstrip_blocks=True,
@@ -40,6 +56,10 @@ class ProcessJinja2(Process):
 
 
 class ProcessCoccinelle(Process):
+    """
+    Coccinelle transformer.
+    """
+
     def transform(self, a, b):
         content_a = a.content or ""
         content_b = b.content or ""
@@ -76,11 +96,19 @@ class ProcessCoccinelle(Process):
 
 
 class ProcessTouch(Process):
+    """
+    Touch transformer.
+    """
+
     def transform(self, a, b):
         return DiffFile(content=a.content, mode=b.mode)
 
 
 class ProcessExec(Process):
+    """
+    Executable transformer.
+    """
+
     def transform(self, a, b):
         assert b.content is not None
 
