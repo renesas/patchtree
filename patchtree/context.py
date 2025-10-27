@@ -110,6 +110,10 @@ class ZipFS(FS):
 
 
 class Context:
+    """
+    Global app context / state holder.
+    """
+
     fs: FS
     output: IO
 

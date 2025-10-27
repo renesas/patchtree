@@ -121,7 +121,7 @@ class ProcessExec(Process):
             shebang = b.content.split("\n", 1)[0][2:]
             cmd = [*shell_split(shebang), *cmd]
 
-        proc = run(cmd, text=True, input=a.content, capture_output=True)
+        proc = run(cmd, text=True, input=a.content, capture_output=True, check=True)
         b.content = proc.stdout
 
         exec.unlink()
