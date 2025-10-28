@@ -1,6 +1,7 @@
 from dataclasses import fields
 from sys import stderr
 from pathlib import Path
+from argparse import ArgumentTypeError
 
 from .context import Context
 from .config import Config
@@ -14,6 +15,13 @@ def load_config() -> Config:
     valid_fields = [field.name for field in fields(Config)]
     init = {key: value for key, value in init.items() if key in valid_fields}
     return Config(**init)
+
+
+def path_dir(path: str) -> Path:
+    out = Path(path)
+    if not out.is_dir():
+        raise ArgumentTypeError(f"not a directory: `{path}'")
+    return out
 
 
 def parse_arguments(config: Config) -> Context:
@@ -36,6 +44,7 @@ def parse_arguments(config: Config) -> Context:
     parser.add_argument(
         "-c",
         "--context",
+        metavar="NUM",
         help="lines of context in output diff",
         type=int,
     )
@@ -45,8 +54,32 @@ def parse_arguments(config: Config) -> Context:
         help="output shebang in resulting patch",
         action="store_true",
     )
-    parser.add_argument("target", help="target directory or archive")
-    parser.add_argument("patch", help="patch input glob(s)", nargs="*")
+    parser.add_argument(
+        "-C",
+        "--root",
+        metavar="DIR",
+        help="patchset root directory",
+        type=path_dir,
+    )
+    parser.add_argument(
+        "-g",
+        "--glob",
+        help="enable globbing for input(s)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "target",
+        metavar="TARGET",
+        help="target directory or archive",
+        type=Path,
+    )
+    parser.add_argument(
+        "patch",
+        metavar="PATCH",
+        help="patchset input(s)",
+        nargs="*",
+        type=str,
+    )
 
     options = parser.parse_args()
 
@@ -70,23 +103,17 @@ def main():
 
     context = parse_arguments(config)
 
-    file_set: set[Path] = set()
-    for pattern in context.options.patch:
-        for path in Path(".").glob(pattern):
-            if not path.is_file():
-                continue
-            file_set.add(path)
-    files = sorted(file_set)
-
-    if len(files) == 0:
+    if len(context.inputs) == 0:
         print("no files to patch!", file=stderr)
         return 0
 
     config.header(config, context)
 
-    for file in files:
+    for file in context.inputs:
         patch = config.patch(config, file)
         patch.write(context)
+
+    context.close()
 
     return 0
 

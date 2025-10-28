@@ -42,6 +42,9 @@ class Patch:
             )
 
     def write(self, context: Context) -> None:
+        if context.root is not None:
+            self.file = str(Path(self.file).relative_to(context.root))
+
         diff = Diff(self.config, self.file)
 
         diff.a = File(
