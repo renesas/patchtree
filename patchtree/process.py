@@ -5,7 +5,7 @@ from tempfile import mkstemp
 from jinja2 import Environment
 from subprocess import Popen, run
 from pathlib import Path
-from shlex import split as shell_split
+from os import fdopen, chmod, unlink
 from dataclasses import dataclass, field
 
 from .diff import File
@@ -68,6 +68,14 @@ class ProcessJinja2(Process):
         return b
 
     def get_template_vars(self) -> dict[str, Any]:
+        """
+        Generate template variables.
+
+        This method returns an empty dict by default, and is meant to be implemented by subclassing the
+        ProcessJinja2 class.
+
+        :returns: A dict of variables defined in the template.
+        """
         return {}
 
 
@@ -140,19 +148,15 @@ class ProcessExec(Process):
     def transform(self, a, b):
         assert b.content is not None
 
-        exec = Path(mkstemp()[1])
-        exec.write_text(b.content)
+        fd, exec = mkstemp()
+        with fdopen(fd, "wt") as f:
+            f.write(b.content)
+        chmod(exec, 0o700)
 
-        cmd = [str(exec)]
-
-        if b.content.startswith("#!"):
-            shebang = b.content.split("\n", 1)[0][2:]
-            cmd = [*shell_split(shebang), *cmd]
-
-        proc = run(cmd, text=True, input=a.content, capture_output=True, check=True)
+        proc = run((str(exec),), text=True, input=a.content, capture_output=True, check=True)
         b.content = proc.stdout
 
-        exec.unlink()
+        unlink(exec)
 
         return b
 

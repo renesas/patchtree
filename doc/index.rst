@@ -9,4 +9,5 @@ Documentation
 
    user/index.rst
    dev/index.rst
+   dev/processor.rst
    api/index.rst

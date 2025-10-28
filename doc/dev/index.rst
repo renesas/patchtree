@@ -62,11 +62,7 @@ The basic syntax of the patchtree CLI is as follows:
 
 .. code:: none
 
-   $ patchtree TARGET INPUT [INPUT ...]
-
-.. note::
-
-   The inputs are interpreted as globs.
+   $ patchtree TARGET [INPUT ...]
 
 By default, the resulting patch is written to the standard output.
 This behavior, along with many other default behaviors can be changed through the command-line arguments (see ``--help``) or the `configuration file <ptconfig_>`_.
@@ -78,12 +74,9 @@ Writing patchset sources
 Each patchset source file is compared to the target source file of the same name, and the resulting diff is output in the clean patch.
 This means that the default behavior of files placed in the patchset is to add or replace any file in the target source tree.
 
-Because most of the time only small adjustments have to be made to the target sources, patchtree uses so-called :ref:`processors <processors>`.
+Because most of the time only small adjustments have to be made to the target sources, patchtree uses so-called processors.
 Every patchset source is first processed by 0 or more processors, which transform the input's content before it is compared to the target file's content.
-These have access to the global :any:`Context` instance, the target file's content, and the (possibly processed) input's content.
 This mechanism allows you to describe changes *semantically* so they can apply to multiple versions of-- or variations in the target.
-
-.. _processors:
 
 Processors
 ==========
@@ -100,16 +93,10 @@ For example:
    \_____________________________________/\__________/
            target source file path         processors
 
-In the above example, the input is first processed by jinja, and the resulting file content is piped into Coccinelle as if a file with the output from jinja existed under the name ``ad_crypto.c#cocci``.
+In the above example, the input is first processed by :ref:`jinja <process_jinja>`, and the resulting file content is piped into :ref:`Coccinelle <process_cocci>` as if a file with the output from jinja existed under the name ``ad_crypto.c#cocci``.
 Coccinelle will in this case output a modified copy of ``ad_crypto.c``, which will be compared to the original to produce the diff for this file.
 
-All processors included with patchtree are listed below:
-
-.. toctree::
-   :maxdepth: 1
-
-   processor.rst
-
+The processors included with patchtree are documented on the :ref:`processors` page.
 Custom processors can be created by inheriting from the base :any:`Process` class and registering through the `configuration file <ptconfig_>`_'s :any:`processors <Config.processors>` value.
 
 .. _ptconfig:
