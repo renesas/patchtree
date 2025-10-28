@@ -10,15 +10,11 @@ from .process import *
 from .diff import *
 
 DEFAULT_PROCESSORS: dict[str, type[Process]] = {
-    "jinja": ProcessJinja2,
+    "id": ProcessIdentity,
     "cocci": ProcessCoccinelle,
-    "smpl": ProcessCoccinelle,
-    "touch": ProcessTouch,
+    "jinja": ProcessJinja2,
     "exec": ProcessExec,
-}
-
-DEFAULT_DIFFS: dict[str, type[Diff]] = {
-    ".gitignore": IgnoreDiff,
+    "merge": ProcessMerge,
 }
 
 
@@ -89,9 +85,6 @@ class Config:
     processors: dict[str, type[Process]] = field(default_factory=lambda: DEFAULT_PROCESSORS)
     """Maps processor specification string to :type:`Process` class type."""
 
-    diff_strategies: dict[str, type[Diff]] = field(default_factory=lambda: DEFAULT_DIFFS)
-    """Maps processor specification string to :type:`Process` class type."""
-
     header: type[Header] = Header
     """Header class type."""
 
@@ -104,4 +97,3 @@ class Config:
 
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}
-        self.diff_strategies = {**DEFAULT_DIFFS, **self.diff_strategies}

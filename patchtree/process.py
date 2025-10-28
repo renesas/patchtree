@@ -1,13 +1,14 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from tempfile import mkstemp
 from jinja2 import Environment
 from subprocess import Popen, run
 from pathlib import Path
 from shlex import split as shell_split
+from dataclasses import dataclass, field
 
-from .diff import DiffFile
+from .diff import File
 
 if TYPE_CHECKING:
     from .context import Context
@@ -21,10 +22,19 @@ class Process:
     context: Context
     """Patch file context."""
 
-    def __init__(self, context: Context):
+    @dataclass
+    class Args:
+        name: str
+        argv: list[str] = field(default_factory=list)
+        argd: dict[str, str | None] = field(default_factory=dict)
+
+    args: Args
+
+    def __init__(self, context: Context, args: Args):
+        self.args = args
         self.context = context
 
-    def transform(self, a: DiffFile, b: DiffFile) -> DiffFile:
+    def transform(self, a: File, b: File) -> File:
         """
         Transform the input file.
 
@@ -45,6 +55,12 @@ class ProcessJinja2(Process):
         lstrip_blocks=True,
     )
 
+    def __init__(self, *args, **kwargs):
+        super(ProcessJinja2, self).__init__(*args, **kwargs)
+
+        if len(self.args.argv) > 0:
+            raise Exception("too many arguments")
+
     def transform(self, a, b):
         template_vars = self.get_template_vars()
         assert b.content is not None
@@ -59,6 +75,12 @@ class ProcessCoccinelle(Process):
     """
     Coccinelle transformer.
     """
+
+    def __init__(self, *args, **kwargs):
+        super(ProcessCoccinelle, self).__init__(*args, **kwargs)
+
+        if len(self.args.argv) > 0:
+            raise Exception("too many arguments")
 
     def transform(self, a, b):
         content_a = a.content or ""
@@ -95,19 +117,25 @@ class ProcessCoccinelle(Process):
         return b
 
 
-class ProcessTouch(Process):
+class ProcessIdentity(Process):
     """
-    Touch transformer.
+    Identity transformer.
     """
 
     def transform(self, a, b):
-        return DiffFile(content=a.content, mode=b.mode)
+        return File(content=a.content, mode=b.mode)
 
 
 class ProcessExec(Process):
     """
     Executable transformer.
     """
+
+    def __init__(self, *args, **kwargs):
+        super(ProcessExec, self).__init__(*args, **kwargs)
+
+        if len(self.args.argv) > 0:
+            raise Exception("too many arguments")
 
     def transform(self, a, b):
         assert b.content is not None
@@ -127,3 +155,49 @@ class ProcessExec(Process):
         exec.unlink()
 
         return b
+
+
+class ProcessMerge(Process):
+    """
+    Merge transformer.
+    """
+
+    def merge_ignore(self, a: File, b: File) -> File:
+        lines_a = a.lines()
+        lines_b = b.lines()
+
+        add_lines = set(lines_b) - set(lines_a)
+
+        b.content = "\n".join(
+            (
+                *lines_a,
+                *add_lines,
+            )
+        )
+
+        return b
+
+    strategies: dict[str, Callable[[ProcessMerge, File, File], File]] = {
+        "ignore": merge_ignore,
+    }
+
+    strategy: Callable[[ProcessMerge, File, File], File]
+
+    def __init__(self, *args, **kwargs):
+        super(ProcessMerge, self).__init__(*args, **kwargs)
+
+        argv = self.args.argv
+        if len(argv) < 1:
+            raise Exception("not enough arguments")
+
+        if len(argv) > 1:
+            raise Exception("too many arguments")
+
+        strategy = argv[0]
+        if strategy not in self.strategies:
+            raise Exception(f"unknown merge strategy: `{strategy}'")
+
+        self.strategy = self.strategies[strategy]
+
+    def transform(self, a, b):
+        return self.strategy(self, a, b)

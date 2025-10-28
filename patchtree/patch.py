@@ -3,10 +3,10 @@ from typing import TYPE_CHECKING
 
 from pathlib import Path
 
-from .diff import Diff, DiffFile
+from .diff import Diff, File
+from .process import Process
 
 if TYPE_CHECKING:
-    from .process import Process
     from .context import Context
     from .config import Config
 
@@ -16,63 +16,47 @@ class Patch:
     patch: Path
 
     file: str
-    file_name: str = ""
-    file_type: str = ""
-    processors: list[str] = []
+    processors: list[tuple[type[Process], Process.Args]] = []
 
     def __init__(self, config: Config, patch: Path):
         self.patch = patch
         self.config = config
 
-        self.file_name = patch.name
-
-        # find preprocessors
-        idx = self.file_name.find(config.process_delimiter)
-        if idx >= 0:
-            self.processors = self.file_name[idx:].split(config.process_delimiter)
-            self.processors = [template.strip() for template in self.processors]
-            self.processors = [template for template in self.processors if len(template) > 0]
-            self.processors.reverse()
-            self.file_name = self.file_name[:idx]
-
-        # save the path to the target file
-        self.file = str(patch.parent.joinpath(self.file_name))
-
-        # find and split at file extension
-        idx = self.file_name.find(".")
-        if idx >= 0:
-            self.file_type = self.file_name[idx:]
-            self.file_name = self.file_name[:idx]
-
-    def get_diff(self) -> type[Diff]:
-        return self.config.diff_strategies.get(self.file_type, Diff)
-
-    def get_processors(self) -> list[type[Process]]:
-        processors = []
-        for processor in self.processors:
-            if processor not in self.config.processors:
-                continue
-            processors.append(self.config.processors[processor])
-        return processors
+        self.processors.clear()
+        self.file, *proc_strs = str(patch).split(config.process_delimiter)
+        for proc_str in proc_strs:
+            proc_name, *argv = proc_str.split(",")
+            args = Process.Args(name=proc_name, argv=argv)
+            proc_cls = config.processors.get(proc_name, None)
+            if proc_cls is None:
+                raise Exception(f"unknown processor: `{proc_cls}'")
+            for arg in argv:
+                key, value, *_ = (*arg.split("=", 1), None)
+                args.argd[key] = value
+            self.processors.insert(
+                0,
+                (
+                    proc_cls,
+                    args,
+                ),
+            )
 
     def write(self, context: Context) -> None:
-        diff_class = self.get_diff()
-        processor_classes = self.get_processors()
+        diff = Diff(self.config, self.file)
 
-        diff = diff_class(self.config, self.file)
-
-        diff.a = DiffFile(
+        diff.a = File(
             content=context.get_content(self.file),
             mode=context.get_mode(self.file),
         )
 
-        diff.b = DiffFile(
+        diff.b = File(
             content=self.patch.read_text(),
             mode=self.patch.stat().st_mode,
         )
-        for processor_class in processor_classes:
-            processor = processor_class(context)
+
+        for cls, args in self.processors:
+            processor = cls(context, args)
             diff.b = processor.transform(diff.a, diff.b)
 
-        delta = diff.diff()
+        delta = diff.compare()
         context.output.write(delta)

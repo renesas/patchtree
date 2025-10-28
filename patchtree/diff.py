@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class DiffFile:
+class File:
     content: str | None
     mode: int
 
@@ -19,17 +19,15 @@ class DiffFile:
 
 class Diff:
     """
-    The base Diff class just produces a regular diff from the (possibly absent)
-    original file to the file in the patch input tree. This effectively
-    overwrites whatever exists in the target sources with the file in the patch
-    input tree.
+    Produce a regular diff from the (possibly absent) original file to the file in the patch input tree. This
+    effectively overwrites whatever exists in the target sources with the file in the patch input tree.
     """
 
     config: Config
     file: str
 
-    a: DiffFile
-    b: DiffFile
+    a: File
+    b: File
 
     def __init__(self, config: Config, file: str):
         self.config = config
@@ -37,7 +35,7 @@ class Diff:
 
     def compare(self) -> str:
         """
-        Generate patch text in "git-diff-files -p" format (see
+        Generate delta in "git-diff-files -p" format (see
         `<https://git-scm.com/docs/diff-format#generate_patch_text_with_p>`_)
         """
         a = self.a
@@ -45,8 +43,6 @@ class Diff:
 
         if a == b:
             return ""
-
-        assert (a.content or b.content) is not None
 
         fromfile = f"a/{self.file}"
         tofile = f"b/{self.file}"
@@ -65,35 +61,10 @@ class Diff:
             delta += f"old mode {a.mode:06o}\n"
             delta += f"new mode {b.mode:06o}\n"
 
-        lines_a = a.lines()
-        lines_b = b.lines()
-        diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context)
-        delta += "".join(f"{line}\n" for line in diff)
+        if a.content != b.content:
+            lines_a = a.lines()
+            lines_b = b.lines()
+            diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context)
+            delta += "".join(f"{line}\n" for line in diff)
 
         return delta
-
-    def diff(self) -> str:
-        return self.compare()
-
-
-class IgnoreDiff(Diff):
-    """
-    IgnoreDiff is ensures all the lines in the patch source are present in the
-    target. This ensures no duplicate ignore lines are added by applying the
-    patch.
-    """
-
-    def diff(self):
-        lines_a = self.a.lines()
-        lines_b = self.b.lines()
-
-        add_lines = set(lines_b) - set(lines_a)
-
-        self.b.content = "\n".join(
-            (
-                *lines_a,
-                *add_lines,
-            )
-        )
-
-        return self.compare()
