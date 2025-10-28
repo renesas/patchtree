@@ -75,36 +75,35 @@ This behavior, along with many other default behaviors can be changed through th
 Writing patchset sources
 ************************
 
-Each patchset source applies to exactly one target source file, and describes any changes that should be made to that file.
-When possible, patchset source files should describe changes *semantically* so they can apply to multiple versions of or variations in the target.
-Patchtree allows you to do using a combination of :ref:`processors <processors>` and :ref:`diff engines <diffs>`.
+Each patchset source file is compared to the target source file of the same name, and the resulting diff is output in the clean patch.
+This means that the default behavior of files placed in the patchset is to add or replace any file in the target source tree.
 
-Every patchset source is first processed by 0 or more processors.
-These are indicated using the hash symbol (``#``) in the filename, and each process the input's contents sequentially from right to left.
-After processing, the resulting file content is compared to the target source's content using a diff engine.
-The diff engine is selected based on the file extension.
-
-Example:
-
-.. code:: none
-
-                                file extension (.c)
-                                        /\
-   sdk/middleware/adapters/src/ad_crypto.c#cocci#jinja
-   \_____________________________________/\__________/
-           target source file path         processors
-                                        (jinja -> cocci)
+Because most of the time only small adjustments have to be made to the target sources, patchtree uses so-called :ref:`processors <processors>`.
+Every patchset source is first processed by 0 or more processors, which transform the input's content before it is compared to the target file's content.
+These have access to the global :any:`Context` instance, the target file's content, and the (possibly processed) input's content.
+This mechanism allows you to describe changes *semantically* so they can apply to multiple versions of-- or variations in the target.
 
 .. _processors:
 
 Processors
 ==========
 
-Processors transform the input's content before it is compared to the target file's content.
-They can be chained, and are applied in reverse order (i.e. from right to left) from how they appear in the filename.
-Each processor has access to the global :any:`Context` instance, the target file's content, and the (possibly processed) input's content.
+Processors are indicated using the hash symbol (``#``) in the filename, and each process the input's contents in a chain.
+Processors may optionally take argument(s) separated by a comma (``,``), and arguments may optionally take a value delimited by an equal sign (``=``)
+After processing, the resulting file content is compared to the target source's content using difflib's unified_diff algorithm.
 
-The processors included with patchtree are listed below.
+For example:
+
+.. code:: none
+
+   sdk/middleware/adapters/src/ad_crypto.c#cocci#jinja
+   \_____________________________________/\__________/
+           target source file path         processors
+
+In the above example, the input is first processed by jinja, and the resulting file content is piped into Coccinelle as if a file with the output from jinja existed under the name ``ad_crypto.c#cocci``.
+Coccinelle will in this case output a modified copy of ``ad_crypto.c``, which will be compared to the original to produce the diff for this file.
+
+All processors included with patchtree are listed below:
 
 .. toctree::
    :maxdepth: 1
@@ -113,25 +112,6 @@ The processors included with patchtree are listed below.
 
 Custom processors can be created by inheriting from the base :any:`Process` class and registering through the `configuration file <ptconfig_>`_'s :any:`processors <Config.processors>` value.
 
-.. _diffs:
-
-Diff engines
-============
-
-Diff engines dictate how the diff delta is calculated from the (possibly processed) input and the target file's content.
-
-.. TODO: Diff engines are stupid, merge strategies can just as well be handled
-   by processors since they have access to the appropriate state and variables
-
-The diff engines included with patchtree are listed below.
-
-.. toctree::
-   :maxdepth: 1
-
-   diff.rst
-
-Similar to processors, custom diff engines can be created by inheriting from the base :any:`Diff` class and registering through the `configuration file <ptconfig_>`_'s :any:`diff_strategies <Config.diff_strategies>` value.
-
 .. _ptconfig:
 
 ******************
@@ -139,6 +119,12 @@ Configuration file
 ******************
 
 The configuration file is a Python file sourced from ``ptconfig.py`` relative to the current working directory when executing the ``patchtree`` command.
-This file can contain arbitrary Python code.
-Certain global variables influence the behavior of patchtree when defined.
-These variables are the member variables of the :any:`Config` class.
+This file is a regular Python source file and can contain any arbitrary code.
+Any global definitions with an identical name to a member variable of the :any:`Config` class will override the global configuration instance's value.
+
+For example:
+
+.. code:: none
+
+   diff_context = 0
+   output_shebang = True
