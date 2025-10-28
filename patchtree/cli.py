@@ -46,7 +46,7 @@ def parse_arguments(config: Config) -> Context:
         action="store_true",
     )
     parser.add_argument("target", help="target directory or archive")
-    parser.add_argument("patch", help="patch input glob(s)", nargs="+")
+    parser.add_argument("patch", help="patch input glob(s)", nargs="*")
 
     options = parser.parse_args()
 
@@ -55,6 +55,9 @@ def parse_arguments(config: Config) -> Context:
 
     if options.shebang:
         config.output_shebang = True
+
+    if len(options.patch) == 0:
+        options.patch = config.default_patch_sources
 
     try:
         return config.context(config, options)

@@ -95,5 +95,8 @@ class Config:
     """Whether to output a shebang line with the ``git patch`` command to apply
     the patch."""
 
+    default_patch_sources: list[str] = field(default_factory=list)
+    """List of default sources."""
+
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}
