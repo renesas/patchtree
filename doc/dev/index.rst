@@ -109,6 +109,10 @@ The configuration file is a Python file sourced from ``ptconfig.py`` relative to
 This file is a regular Python source file and can contain any arbitrary code.
 Any global definitions with an identical name to a member variable of the :any:`Config` class will override the global configuration instance's value.
 
+The main method in which patchtree is configured is by creating subclasses of its internal classes and overriding its methods.
+In order to facilitate this, the type of most classes is read from the :any:`Config` dataclass instead of being instantiated directly.
+Please take a look at the :ref:`api` for more info.
+
 For example:
 
 .. code:: none

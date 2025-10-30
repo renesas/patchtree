@@ -8,6 +8,11 @@ from .config import Config
 
 
 def load_config() -> Config:
+    """
+    Create a new instance of the :any:`Config` dataclass and attempt to overwrite any members using the global
+    variables defined in ptconfig.py (if it exists).
+    """
+
     init = {}
     cfg = Path("ptconfig.py")
     if cfg.exists():
@@ -18,6 +23,10 @@ def load_config() -> Config:
 
 
 def path_dir(path: str) -> Path:
+    """
+    Argparse helper type for a pathlib Path to a directory.
+    """
+
     out = Path(path)
     if not out.is_dir():
         raise ArgumentTypeError(f"not a directory: `{path}'")
@@ -25,6 +34,10 @@ def path_dir(path: str) -> Path:
 
 
 def parse_arguments(config: Config) -> Context:
+    """
+    Parse command-line arguments and return the application context.
+    """
+
     parser = config.argument_parser(
         prog="patchtree",
         description="patch file generator",

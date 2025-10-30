@@ -21,14 +21,24 @@ DEFAULT_PROCESSORS: dict[str, type[Process]] = {
 
 class Header:
     """
-    Patch output header.
+    Patch output header generator.
+
+    The header is formatted as
+
+    * shebang (optional)
+    * patchtree version info
+    * extra version info (empty by default)
+    * license (empty by default)
     """
 
     config: Config
     context: Context
 
     name = "patchtree"
+    """Program name shown in version info."""
+
     license = None
+    """License text (optional)."""
 
     def __init__(self, config: Config, context: Context):
         self.config = config
@@ -40,8 +50,13 @@ class Header:
         self.write_license()
 
     def write_shebang(self):
+        """
+        Write a shebang line to apply the output patch if the --shebang option was passed.
+        """
+
         if not self.config.output_shebang:
             return
+
         cmd = [
             "/usr/bin/env",
             "-S",
@@ -51,13 +66,28 @@ class Header:
         self.context.output.write(f"#!{cmdline}\n")
 
     def write_version(self):
+        """
+        Write the patchtree name and version number.
+        """
+
         version = metadata.version("patchtree")
         self.context.output.write(f"{self.name} output (version {version})\n")
 
     def write_version_extra(self):
+        """
+        Write extra version information (empty).
+
+        This method is meant to be implemented by subclasses of Header defined in the ptconfig.py of
+        patchsets.
+        """
+
         pass
 
     def write_license(self):
+        """
+        Write a license if it is defined.
+        """
+
         if self.license is None:
             return
         self.context.output.write(f"{self.license}\n")
@@ -72,29 +102,32 @@ class Config:
     """
 
     context: type[Context] = Context
-    """Context class type."""
+    """Context class type. Override this to add custom context variables."""
 
     patch: type[Patch] = Patch
     """Patch class type."""
 
     argument_parser: type[ArgumentParser] = ArgumentParser
-    """ArgumentParser class type."""
+    """ArgumentParser class type. Override this to add custom arguments."""
 
     process_delimiter: str = "#"
-    """String used to delimit processors in patch source filenames."""
+    """
+    String used to delimit processors in patch source filenames.
+
+    See: :ref:`processors`.
+    """
 
     processors: dict[str, type[Process]] = field(default_factory=lambda: DEFAULT_PROCESSORS)
     """Maps processor specification string to :type:`Process` class type."""
 
     header: type[Header] = Header
-    """Header class type."""
+    """Header class type. Override this to modify the patch header format."""
 
     diff_context: int = 3
-    """Lines of context to include in the default diffs."""
+    """Lines of context to include in the diffs."""
 
     output_shebang: bool = False
-    """Whether to output a shebang line with the ``git patch`` command to apply
-    the patch."""
+    """Whether to output a shebang line with the ``git patch`` command to apply the patch."""
 
     default_patch_sources: list[Path] = field(default_factory=list)
     """List of default sources."""

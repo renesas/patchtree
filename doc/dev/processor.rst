@@ -16,28 +16,14 @@ Note that some processors may take positional arguments, while others may use ke
 Identity
 ********
 
-The identity processor is used to "touch" files or add arbitrary identifiers to patchset source filenames through its arguments.
+The identity processor is used to "touch" files, change the mode of existing files, or add arbitrary identifiers to patchset source filenames by passing arbitrary arguments.
 
-.. list-table::
-   :stub-columns: 1
-
-   * - Class
-     - :any:`ProcessIdentity`
-   * - Identifier
-     - ``id``
-
-Input
-  Ignored.
-
-Output
-  The *content* of the target file.
-
-  .. note::
-
-     Changing the patchset input's mode *will* affect the target file mode!
-
-Arguments
-  Any arguments passed to this processor are ignored.
+:Class: :any:`ProcessIdentity`
+:Identifier: ``id``
+:Input: Ignored.
+:Output:
+  A file with the *content* of the target file and *mode* of the patchset input.
+:Arguments: Any arguments passed to this processor are ignored.
 
 .. _process_cocci:
 
@@ -51,22 +37,11 @@ The Coccinelle processor uses Coccinelle to apply patch(es) in the SmPL (Semanti
 
    In order to use this processor, Coccinelle must be installed and ``spatch`` must be available in ``$PATH``.
 
-.. list-table::
-   :stub-columns: 1
-
-   * - Class
-     - :any:`ProcessCoccinelle`
-   * - Identifier
-     - ``cocci``
-
-Input
-  Coccinelle's SmPL input.
-
-Output
-  The contents of the target file after being processed by Coccinelle (not the diff returned by Coccinelle).
-
-Arguments
-  Reserved.
+:Class: :any:`ProcessCoccinelle`
+:Identifier: ``cocci``
+:Input: Coccinelle's SmPL input.
+:Output: The contents of the target file after being processed by Coccinelle (not the diff returned by Coccinelle).
+:Arguments: Reserved.
 
 .. _process_jinja:
 
@@ -74,29 +49,18 @@ Arguments
 Jinja template
 **************
 
-The Jinja processor passes the inputs through the Jinja2 templating engine.
+The Jinja processor passes the input through the Jinja2 templating engine.
+
+:Class: :any:`ProcessJinja2`
+:Identifier: ``jinja``
+:Input: Jinja template code.
+:Output: The input after being processed by Jinja.
+:Arguments: Reserved.
 
 .. note::
 
    Template variables are generated through the :any:`get_template_vars <ProcessJinja2.get_template_vars>` method.
    This method returns an empty dict by default, and is meant to be implemented by implementing a custom class that derives from ProcessJinja2 and registering it through the :ref:`configuration file <ptconfig>`.
-
-.. list-table::
-   :stub-columns: 1
-
-   * - Class
-     - :any:`ProcessJinja2`
-   * - Identifier
-     - ``jinja``
-
-Input
-  Jinja template code.
-
-Output
-  The input after being processed by Jinja.
-
-Arguments
-  Reserved.
 
 .. _process_exe:
 
@@ -106,26 +70,17 @@ Executable
 
 The executable processor runs the input as an executable, passes the target file to its standard input, and returns its standard output.
 
-.. list-table::
-   :stub-columns: 1
-
-   * - Class
-     - :any:`ProcessExec`
-   * - Identifier
-     - ``exec``
-
-Input
+:Class: :any:`ProcessExec`
+:Identifier: ``exec``
+:Input:
   Executable script.
 
   .. important::
 
-     The executable must contain a shebang line to specify what interpreter to use.
+     The executable *must* contain a shebang line to specify what interpreter to use.
 
-Output
-  Any content written to the standard output by the executable.
-
-Arguments
-  Reserved.
+:Output: Any content written to the standard output by the executable.
+:Arguments: Reserved.
 
 .. _process_merge:
 
@@ -135,21 +90,12 @@ Merge
 
 The merge processor merges the input with the target file, such that changes are combined with the target instead of replacing the target.
 
-.. list-table::
-   :stub-columns: 1
+:Class: :any:`ProcessMerge`
+:Identifier: ``merge``
+:Input: Content to merge.
+:Output: Merged changes.
+:Arguments: Positional.
 
-   * - Class
-     - :any:`ProcessMerge`
-   * - Identifier
-     - ``merge``
-
-Input
-  Content to merge.
-
-Output
-  Merged changes.
-
-Arguments (positional)
   1. Merge strategy:
 
      ``ignore``

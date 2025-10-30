@@ -18,22 +18,48 @@ ZIP_CREATE_SYSTEM_UNX = 3
 
 
 class FS:
+    """Target filesystem interface."""
+
     target: Path
 
     def __init__(self, target: Path):
         self.target = target
 
     def get_dir(self, dir: str) -> list[str]:
+        """
+        List all items in a subdirectory of the target.
+
+        :returns: A list of all item names.
+        """
+
         raise NotImplementedError()
 
     def get_content(self, file: str) -> str | None:
+        """
+        Get the content of a file relative to the target.
+
+        :returns:
+          * The file content if it exists.
+          * None if the file does not exist.
+        """
+
         raise NotImplementedError()
 
     def get_mode(self, file: str) -> int:
+        """
+        Get the mode of a file relative to the target.
+
+        :returns:
+          * The mode as returned by stat(3)'s ``stat.st_mode``
+          * 0 if the file does not exist
+        """
+
         raise NotImplementedError()
 
 
 class DiskFS(FS):
+    """Implementation of :any:`FS` for a regular directory. Reads directly from the disk."""
+
     def __init__(self, target):
         super(DiskFS, self).__init__(target)
 
@@ -59,16 +85,30 @@ class DiskFS(FS):
 
 
 class ZipFS(FS):
+    """Implementation of :any:`FS` for zip files. Reads directly from the archive."""
+
     zip: ZipFile
+    """Underlying zip file."""
+
     files: dict[Path, ZipInfo] = {}
+    """Map of path -> ZipInfo for all files in the archive."""
 
     def __init__(self, target):
         super(ZipFS, self).__init__(target)
         self.zip = ZipFile(str(target))
         for info in self.zip.infolist():
             self.files[Path(info.filename)] = info
+        # todo: index implicit directories in tree
 
     def get_info(self, path: str) -> ZipInfo | None:
+        """
+        Get the ZipInfo for a file in the archive
+
+        :returns:
+          * The ZipInfo for the file at ``path``
+          * None if the file does not exist
+        """
+
         return self.files.get(Path(path), None)
 
     def get_dir(self, dir: str) -> list[str]:
@@ -95,15 +135,40 @@ class ZipFS(FS):
         except:
             return ""
 
+    def is_implicit_dir(self, file: str) -> bool:
+        """
+        Check if there is an implicit directory at ``file``.
+
+        Some zip files may not include entries for all directories if they already define entries for files or
+        subdirectories within. This function checks if any path that is a subdirectory of ``file`` exists.
+
+        :returns: ``True`` if there is a directory at ``file``, else ``False``.
+        """
+
+        parent = Path(file)
+        for child in self.files:
+            if parent in child.parents:
+                return True
+        return False
+
     def get_mode(self, file: str) -> int:
+        MODE_NONEXISTANT = 0
+        MODE_FILE = 0o644 | S_IFREG
+        MODE_DIR = 0o755 | S_IFDIR
+
         info = self.get_info(file)
         if info is None:
-            return 0
+            # if self.is_implicit_dir(file):
+            #     return MODE_DIR
+            return MODE_NONEXISTANT
+
         if info.create_system == ZIP_CREATE_SYSTEM_UNX:
             return (info.external_attr >> 16) & 0xFFFF
+
         if info.is_dir():
-            return 0o755 | S_IFDIR
-        return 0o644 | S_IFREG
+            return MODE_DIR
+
+        return MODE_FILE
 
 
 class Context:

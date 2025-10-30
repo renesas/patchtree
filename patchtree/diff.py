@@ -19,15 +19,18 @@ class File:
 
 class Diff:
     """
-    Produce a regular diff from the (possibly absent) original file to the file in the patch input tree. This
-    effectively overwrites whatever exists in the target sources with the file in the patch input tree.
+    Produce a regular diff from the (possibly absent) original file to the file in the patch input tree.
     """
 
     config: Config
     file: str
+    """Path to file relative to target dir."""
 
     a: File
+    """Original file."""
+
     b: File
+    """Target file."""
 
     def __init__(self, config: Config, file: str):
         self.config = config
