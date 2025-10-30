@@ -11,12 +11,26 @@ if TYPE_CHECKING:
 @dataclass
 class File:
     content: str | bytes | None
+    """The file's contents, or ``None`` if it does not exist."""
+
     mode: int
+    """The file's mode as returned by stat(3)'s ``stat.st_mode``."""
 
     def is_binary(self) -> bool:
         return isinstance(self.content, bytes)
 
     def lines(self) -> list[str]:
+        """
+        Get a list of lines in this file.
+
+        :returns:
+          * A list of strings for each line in the file
+          * An empty list if the file is empty or nonexistent
+
+        .. note::
+
+           This function only works for text files. Use :any:`File.is_binary` to check this safely.
+        """
         assert not isinstance(self.content, bytes)
         return (self.content or "").splitlines()
 
@@ -31,10 +45,10 @@ class Diff:
     """Path to file relative to target dir."""
 
     a: File
-    """Original file."""
+    """Original (before) file."""
 
     b: File
-    """Target file."""
+    """Target (after) file."""
 
     def __init__(self, config: Config, file: str):
         self.config = config

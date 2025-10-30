@@ -172,17 +172,31 @@ class ZipFS(FS):
 
 
 class Context:
-    """
-    Global app context / state holder.
-    """
+    """Global app context / state holder."""
 
-    fs: FS
-    output: IO
+    inputs: list[Path] = []
+    """A list of patchset inputs (relative to the current working directory)."""
 
     root: Path
+    """
+    Patchset root folder. All patchset input paths will be treated relative to this folder.
+
+    .. note::
+
+       The ``root`` member only changes the appearance of paths. All internal logic uses the "real" paths.
+    """
+
     target: Path
-    inputs: list[Path] = []
+    """Path to target."""
+
+    fs: FS
+    """Target file system interface."""
+
+    output: IO
+    """Output stream for writing the clean patch."""
+
     in_place: bool
+    """Whether to apply the changes directly to the target instead of outputting the .patch file."""
 
     config: Config
 
@@ -201,6 +215,8 @@ class Context:
             self.apply(True)
 
     def close(self):
+        """Finish writing the clean patch file and close it."""
+
         # patch must have a trailing newline
         self.output.write("\n")
         self.output.flush()
@@ -211,6 +227,9 @@ class Context:
         self.output.close()
 
     def collect_inputs(self, options: Namespace) -> list[Path]:
+        """
+        Collect a list of patchset inputs depending on the globbing, patchset root and provided input path(s).
+        """
         inputs: set[Path] = set()
 
         if len(inputs) == 0 and options.root is not None:
@@ -235,15 +254,23 @@ class Context:
             return list(inputs)
 
     def get_dir(self, dir: str) -> list[str]:
+        """Get a target directory's content (see :any:`FS.get_dir()`)"""
         return self.fs.get_dir(dir)
 
     def get_content(self, file: str) -> bytes | str | None:
+        """Get a target file's content (see :any:`FS.get_content()`)"""
         return self.fs.get_content(file)
 
     def get_mode(self, file: str) -> int:
+        """Get a target file's mode (see :any:`FS.get_mode()`)"""
         return self.fs.get_mode(file)
 
     def get_fs(self) -> FS:
+        """
+        Open the selected target, taking into account the --in-place option.
+
+        :returns: Target filesystem interface.
+        """
         target = self.target
 
         if not target.exists():
@@ -260,6 +287,11 @@ class Context:
         raise Exception("cannot read `{target}'")
 
     def get_output(self, options: Namespace) -> IO:
+        """
+        Open the output stream, taking into account the --in-place and --out options.
+
+        :returns: Output stream.
+        """
         if self.in_place:
             if options.out is not None:
                 print("warning: --out is ignored when using --in-place", file=stderr)
@@ -274,16 +306,22 @@ class Context:
         return stdout
 
     def get_apply_cmd(self) -> list[str]:
-        cmd = [
-            "git",
-            "apply",
-            "--allow-empty",
-        ]
+        """
+        Create a command argument vector for applying the current patch.
+
+        :returns: Command argument vector.
+        """
+
+        cmd = ["git", "apply", "--allow-empty"]
         if self.config.diff_context == 0:
             cmd.append("--unidiff-zero")
         return cmd
 
     def apply(self, reverse: bool) -> None:
+        """
+        Apply the patch in ``self.output`` and update the cache or reverse the patch in the cache.
+        """
+
         location = cast(DiskFS, self.fs).target
         cache = location.joinpath(".patchtree.diff")
         cmd = self.get_apply_cmd()

@@ -24,11 +24,21 @@ class Process:
 
     @dataclass
     class Args:
+        """
+        Processor filename arguments.
+
+        See :ref:`processors`.
+        """
+
         name: str
+        """The name the processor was called with."""
         argv: list[str] = field(default_factory=list)
+        """The arguments passed to the processor"""
         argd: dict[str, str | None] = field(default_factory=dict)
+        """The key/value arguments passed to the processor"""
 
     args: Args
+    """Arguments passed to this processor."""
 
     def __init__(self, context: Context, args: Args):
         self.args = args
@@ -38,9 +48,9 @@ class Process:
         """
         Transform the input file.
 
-        :param a: content of file to patch
-        :param b: content of patch input (in patch tree)
-        :returns: processed file
+        :param a: Content of file to patch.
+        :param b: Content of patch input in patch tree or output of previous processor.
+        :returns: Processed file.
         """
         raise NotImplementedError()
 
@@ -64,6 +74,7 @@ class ProcessJinja2(Process):
     def transform(self, a, b):
         template_vars = self.get_template_vars()
         assert b.content is not None
+        assert not isinstance(b.content, bytes)
         b.content = self.environment.from_string(b.content).render(**template_vars)
         return b
 
@@ -91,6 +102,8 @@ class ProcessCoccinelle(Process):
             raise Exception("too many arguments")
 
     def transform(self, a, b):
+        assert not isinstance(a.content, bytes)
+        assert not isinstance(b.content, bytes)
         content_a = a.content or ""
         content_b = b.content or ""
 
@@ -147,6 +160,7 @@ class ProcessExec(Process):
 
     def transform(self, a, b):
         assert b.content is not None
+        assert not isinstance(b.content, bytes)
 
         fd, exec = mkstemp()
         with fdopen(fd, "wt") as f:
@@ -172,12 +186,7 @@ class ProcessMerge(Process):
 
         add_lines = set(lines_b) - set(lines_a)
 
-        b.content = "\n".join(
-            (
-                *lines_a,
-                *add_lines,
-            )
-        )
+        b.content = "\n".join((*lines_a, *add_lines))
 
         return b
 

@@ -12,11 +12,18 @@ if TYPE_CHECKING:
 
 
 class Patch:
+    """A single patched file."""
+
     config: Config
+
     patch: Path
+    """The patchset input location."""
 
     file: str
+    """The name of the patched file in the target."""
+
     processors: list[tuple[type[Process], Process.Args]] = []
+    """A list of processors to apply to the input before diffing."""
 
     def __init__(self, config: Config, patch: Path):
         self.patch = patch
@@ -33,15 +40,13 @@ class Patch:
             for arg in argv:
                 key, value, *_ = (*arg.split("=", 1), None)
                 args.argd[key] = value
-            self.processors.insert(
-                0,
-                (
-                    proc_cls,
-                    args,
-                ),
-            )
+            self.processors.insert(0, (proc_cls, args))
 
     def write(self, context: Context) -> None:
+        """
+        Apply all processors, compare to the target and write the delta to :any:`Context.output`.
+        """
+
         if context.root is not None:
             self.file = str(Path(self.file).relative_to(context.root))
 

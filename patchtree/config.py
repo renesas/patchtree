@@ -57,11 +57,7 @@ class Header:
         if not self.config.output_shebang:
             return
 
-        cmd = [
-            "/usr/bin/env",
-            "-S",
-            *self.context.get_apply_cmd(),
-        ]
+        cmd = ["/usr/bin/env", "-S", *self.context.get_apply_cmd()]
         cmdline = " ".join(cmd)
         self.context.output.write(f"#!{cmdline}\n")
 
@@ -118,7 +114,14 @@ class Config:
     """
 
     processors: dict[str, type[Process]] = field(default_factory=lambda: DEFAULT_PROCESSORS)
-    """Maps processor specification string to :type:`Process` class type."""
+    """
+    Maps processor specification string to :type:`Process` class type.
+
+    .. note::
+
+       If this member is defined in the configuration file, it is automatically merged with the default dict,
+       with the configuration file keys taking priority.
+    """
 
     header: type[Header] = Header
     """Header class type. Override this to modify the patch header format."""
@@ -133,7 +136,7 @@ class Config:
     """List of default sources."""
 
     default_root: str | None = None
-    """Default value of the -C argument."""
+    """Default value of the ``-C``/``--root`` argument."""
 
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}
