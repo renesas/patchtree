@@ -1,4 +1,24 @@
+.. raw:: html
+
+   <style>
+   pre {
+     padding: unset !important;
+     font-family: monospace !important;
+     margin: 0 auto !important;
+     width: min-content;
+   }
+
+   .highlight {
+     background: unset;
+   }
+
+   .rst-content div[class^=highlight] {
+     border: none;
+   }
+   </style>
+
 .. include:: ../readme.rst
+   :end-line: 18
 
 #############
 Documentation

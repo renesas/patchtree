@@ -17,6 +17,9 @@ class File:
     """The file's mode as returned by stat(3)'s ``stat.st_mode``."""
 
     def is_binary(self) -> bool:
+        """
+        :returns: A boolean representing whether this file's content is binary.
+        """
         return isinstance(self.content, bytes)
 
     def lines(self) -> list[str]:
@@ -29,7 +32,7 @@ class File:
 
         .. note::
 
-           This function only works for text files. Use :any:`File.is_binary` to check this safely.
+           This function only works for text files. Use :any:`is_binary` to check this safely.
         """
         assert not isinstance(self.content, bytes)
         return (self.content or "").splitlines()

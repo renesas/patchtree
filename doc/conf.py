@@ -12,10 +12,7 @@ import patchtree
 
 project = "patchtree"
 release = "???"
-extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx_automodapi.automodapi",
-]
+extensions = ["sphinx.ext.autodoc"]
 templates_path = []
 exclude_patterns = []
 html_theme = "sphinx_rtd_theme"
