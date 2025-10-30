@@ -73,6 +73,7 @@ def parse_arguments(config: Config) -> Context:
         metavar="DIR",
         help="patchset root directory",
         type=path_dir,
+        default=config.default_root,
     )
     parser.add_argument(
         "-g",

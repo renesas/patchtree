@@ -53,9 +53,14 @@ class Patch:
         )
 
         diff.b = File(
-            content=self.patch.read_text(),
+            content=None,
             mode=self.patch.stat().st_mode,
         )
+        b_content = self.patch.read_bytes()
+        try:
+            diff.b.content = b_content.decode()
+        except:
+            diff.b.content = b_content
 
         for cls, args in self.processors:
             processor = cls(context, args)

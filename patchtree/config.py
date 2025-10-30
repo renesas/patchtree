@@ -132,5 +132,8 @@ class Config:
     default_patch_sources: list[Path] = field(default_factory=list)
     """List of default sources."""
 
+    default_root: str | None = None
+    """Default value of the -C argument."""
+
     def __post_init__(self):
         self.processors = {**DEFAULT_PROCESSORS, **self.processors}

@@ -10,10 +10,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class File:
-    content: str | None
+    content: str | bytes | None
     mode: int
 
+    def is_binary(self) -> bool:
+        return isinstance(self.content, bytes)
+
     def lines(self) -> list[str]:
+        assert not isinstance(self.content, bytes)
         return (self.content or "").splitlines()
 
 
@@ -65,9 +69,17 @@ class Diff:
             delta += f"new mode {b.mode:06o}\n"
 
         if a.content != b.content:
-            lines_a = a.lines()
-            lines_b = b.lines()
-            diff = unified_diff(lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context)
-            delta += "".join(f"{line}\n" for line in diff)
+            # make sure a file doesn't switch from text to binary or vice versa
+            assert a.is_binary() == b.is_binary()
+
+            if not b.is_binary():
+                lines_a = a.lines()
+                lines_b = b.lines()
+                diff = unified_diff(
+                    lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context
+                )
+                delta += "".join(f"{line}\n" for line in diff)
+            else:
+                delta += f"Binary files {fromfile} and {tofile} differ\n"
 
         return delta

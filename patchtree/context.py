@@ -34,7 +34,7 @@ class FS:
 
         raise NotImplementedError()
 
-    def get_content(self, file: str) -> str | None:
+    def get_content(self, file: str) -> bytes | str | None:
         """
         Get the content of a file relative to the target.
 
@@ -63,11 +63,11 @@ class DiskFS(FS):
     def __init__(self, target):
         super(DiskFS, self).__init__(target)
 
-    def get_dir(self, dir: str) -> list[str]:
+    def get_dir(self, dir):
         here = self.target.joinpath(dir)
         return [path.name for path in here.iterdir()]
 
-    def get_content(self, file: str) -> str | None:
+    def get_content(self, file):
         here = self.target.joinpath(file)
         if not here.exists():
             return None
@@ -75,9 +75,9 @@ class DiskFS(FS):
         try:
             return bytes.decode()
         except:
-            return ""
+            return bytes
 
-    def get_mode(self, file: str) -> int:
+    def get_mode(self, file):
         here = self.target.joinpath(file)
         if not here.exists():
             return 0
@@ -111,7 +111,7 @@ class ZipFS(FS):
 
         return self.files.get(Path(path), None)
 
-    def get_dir(self, dir: str) -> list[str]:
+    def get_dir(self, dir):
         items: set[str] = set()
         dir = path.normpath("/" + dir)
         for zip_dir in self.zip.namelist():
@@ -125,7 +125,7 @@ class ZipFS(FS):
             items.add(top_level)
         return list(items)
 
-    def get_content(self, file: str) -> str | None:
+    def get_content(self, file):
         info = self.get_info(file)
         if info is None:
             return None
@@ -133,7 +133,7 @@ class ZipFS(FS):
         try:
             return bytes.decode()
         except:
-            return ""
+            return bytes
 
     def is_implicit_dir(self, file: str) -> bool:
         """
@@ -151,7 +151,7 @@ class ZipFS(FS):
                 return True
         return False
 
-    def get_mode(self, file: str) -> int:
+    def get_mode(self, file):
         MODE_NONEXISTANT = 0
         MODE_FILE = 0o644 | S_IFREG
         MODE_DIR = 0o755 | S_IFDIR
@@ -213,9 +213,9 @@ class Context:
     def collect_inputs(self, options: Namespace) -> list[Path]:
         inputs: set[Path] = set()
 
-        if len(inputs) == 0:
+        if len(inputs) == 0 and options.root is not None:
             options.glob = True
-            options.patch = [str(Path(options.root or ".").joinpath("**"))]
+            options.patch = [str(Path(options.root).joinpath("**"))]
 
         if options.glob:
             for pattern in options.patch:
@@ -237,7 +237,7 @@ class Context:
     def get_dir(self, dir: str) -> list[str]:
         return self.fs.get_dir(dir)
 
-    def get_content(self, file: str) -> str | None:
+    def get_content(self, file: str) -> bytes | str | None:
         return self.fs.get_content(file)
 
     def get_mode(self, file: str) -> int:
