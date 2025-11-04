@@ -232,7 +232,7 @@ class Context:
         """
         inputs: set[Path] = set()
 
-        if len(inputs) == 0 and options.root is not None:
+        if len(options.patch) == 0 and options.root is not None:
             options.glob = True
             options.patch = [str(Path(options.root).joinpath("**"))]
 
