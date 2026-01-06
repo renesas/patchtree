@@ -1,61 +1,76 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Callable
+from stat import S_IFREG
+from typing import TYPE_CHECKING, Any, Callable, Hashable
 
 from tempfile import mkstemp
 from jinja2 import Environment
-from subprocess import Popen, run
+from subprocess import PIPE, Popen, run
 from pathlib import Path
-from os import fdopen, chmod, unlink
-from dataclasses import dataclass, field
+from shlex import split
 
+from .spec import (
+    DefaultInputSpec,
+    LiteralInputSpec,
+    ProcessInputSpec,
+    TargetFileInputSpec,
+)
 from .diff import File
 
 if TYPE_CHECKING:
-    from .context import Context
+    from .target import Target
 
 
 class Process:
     """
-    Processor base interface.
+    Process base interface.
     """
 
-    context: Context
+    target: Target
     """Patch file context."""
 
-    @dataclass
-    class Args:
+    input_spec: ProcessInputSpec
+    """Processor ``input`` option (see :ref:`processors`)"""
+    target_spec: ProcessInputSpec
+    """Processor ``target`` option (optionally used, see :ref:`processors`)"""
+
+    def __init__(self, target: Target, data: dict[Hashable, Any] = {}):
+        self.target = target
+
+        if "input" in data:
+            if isinstance(data["input"], ProcessInputSpec):
+                self.input_spec = data["input"]
+            elif isinstance(data["input"], str):
+                self.input_spec = LiteralInputSpec(content=data["input"])
+            else:
+                raise Exception(f"type error for key input {type(data['input'])}")
+            del data["input"]
+
+        if "target" in data:
+            if isinstance(data["target"], ProcessInputSpec):
+                self.target_spec = data["target"]
+            elif isinstance(data["target"], str):
+                self.target_spec = LiteralInputSpec(content=data["target"])
+            else:
+                raise Exception(f"type error for key target {type(data['target'])}")
+            del data["target"]
+
+        assert target.file is not None
+
+        self.input_spec = getattr(self, "input_spec", DefaultInputSpec())
+        self.target_spec = getattr(
+            self, "target_spec", TargetFileInputSpec(path=Path(target.file))
+        )
+
+    def transform(self) -> File:
         """
-        Processor filename arguments.
+        Perform the transformation of this processor.
 
-        See :ref:`processors`.
-        """
-
-        name: str
-        """The name the processor was called with."""
-        argv: list[str] = field(default_factory=list)
-        """The arguments passed to the processor"""
-        argd: dict[str, str | None] = field(default_factory=dict)
-        """The key/value arguments passed to the processor"""
-
-    args: Args
-    """Arguments passed to this processor."""
-
-    def __init__(self, context: Context, args: Args):
-        self.args = args
-        self.context = context
-
-    def transform(self, a: File, b: File) -> File:
-        """
-        Transform the input file.
-
-        :param a: Content of file to patch.
-        :param b: Content of patch input in patch tree or output of previous processor.
         :returns: Processed file.
         """
         raise NotImplementedError()
 
 
-class ProcessJinja2(Process):
+class Jinja2Process(Process):
     """
     Jinja2 preprocessor.
     """
@@ -65,117 +80,137 @@ class ProcessJinja2(Process):
         lstrip_blocks=True,
     )
 
-    def __init__(self, *args, **kwargs):
-        super(ProcessJinja2, self).__init__(*args, **kwargs)
-
-        if len(self.args.argv) > 0:
-            raise Exception("too many arguments")
-
-    def transform(self, a, b):
+    def transform(self):
         template_vars = self.get_template_vars()
-        assert b.content is not None
-        assert not isinstance(b.content, bytes)
-        b.content = self.environment.from_string(b.content).render(**template_vars)
-        return b
+        input = self.target.get_file(self.input_spec)
+        input.content = self.environment.from_string(input.get_str()).render(**template_vars)
+
+        return input
 
     def get_template_vars(self) -> dict[str, Any]:
         """
         Generate template variables.
 
-        This method returns an empty dict by default, and is meant to be implemented by subclassing the
-        ProcessJinja2 class.
+        This method returns an empty dict by default and is meant to be implemented by the user by creating a subclass and registering it through the :ref:`configuration file <ptconfig>`.
 
         :returns: A dict of variables defined in the template.
         """
         return {}
 
 
-class ProcessCoccinelle(Process):
+class CoccinelleProcess(Process):
     """
     Coccinelle transformer.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(ProcessCoccinelle, self).__init__(*args, **kwargs)
+    def __init__(self, target, data):
+        if "input" not in data:
+            self.input_spec = TargetFileInputSpec(path=Path(target.file))
 
-        if len(self.args.argv) > 0:
-            raise Exception("too many arguments")
+        if "target" not in data:
+            self.target_spec = DefaultInputSpec()
 
-    def transform(self, a, b):
-        assert not isinstance(a.content, bytes)
-        assert not isinstance(b.content, bytes)
-        content_a = a.content or ""
-        content_b = b.content or ""
+        super().__init__(target, data)
 
-        if len(content_b.strip()) == 0:
-            return a
+    def transform(self):
+        input = self.target.get_file(self.input_spec)
+        patch = self.target.get_file(self.target_spec)
 
-        temp_a = Path(mkstemp()[1])
-        temp_b = Path(mkstemp()[1])
-        temp_sp = Path(mkstemp()[1])
+        content_input = input.get_str()
+        content_patch = patch.get_str()
 
-        temp_a.write_text(content_a)
-        temp_sp.write_text(content_b)
+        # empty patch -> return input as-is (coccinelle gives errors in this case)
+        if len(content_patch.strip()) == 0:
+            return input
+
+        temp_input = Path(mkstemp()[1])
+        temp_output = Path(mkstemp()[1])
+        temp_patch = Path(mkstemp()[1])
+
+        temp_input.write_text(content_input)
+        temp_patch.write_text(content_patch)
         cmd = (
             "spatch",
             "--very-quiet",
             "--no-show-diff",
             "--sp-file",
-            str(temp_sp),
-            str(temp_a),
+            str(temp_patch),
+            str(temp_input),
             "-o",
-            str(temp_b),
+            str(temp_output),
         )
         coccinelle = Popen(cmd)
         coccinelle.wait()
 
-        b.content = temp_b.read_text()
+        input.content = temp_output.read_text()
 
-        temp_a.unlink()
-        temp_b.unlink()
-        temp_sp.unlink()
+        temp_input.unlink()
+        temp_output.unlink()
+        temp_patch.unlink()
 
-        return b
+        return input
 
 
-class ProcessIdentity(Process):
+class TouchProcess(Process):
     """
-    Identity transformer.
+    Touch transformer.
     """
 
-    def transform(self, a, b):
-        return File(content=a.content, mode=b.mode)
+    mode: int | None = None
+
+    def transform(self):
+        input = self.target.get_file(self.input_spec)
+        input.content = input.content or ""
+        input.mode = self.mode or input.mode
+        return input
+
+    def __init__(self, target, data):
+        super().__init__(target, data)
+
+        if "mode" in data:
+            if not isinstance(data["mode"], int):
+                raise TypeError("invalid type of key 'mode'")
+            self.mode = data["mode"] | S_IFREG
+            del data["mode"]
 
 
-class ProcessExec(Process):
+class ExecProcess(Process):
     """
     Executable transformer.
     """
 
-    def __init__(self, *args, **kwargs):
-        super(ProcessExec, self).__init__(*args, **kwargs)
+    cmd: list[str] = []
 
-        if len(self.args.argv) > 0:
-            raise Exception("too many arguments")
+    def __init__(self, target, data):
+        super().__init__(target, data)
 
-    def transform(self, a, b):
-        assert b.content is not None
-        assert not isinstance(b.content, bytes)
+        if "cmd" not in data:
+            raise Exception("missing property `cmd'")
+        if isinstance(data["cmd"], str):
+            self.cmd = split(data["cmd"])
+        elif isinstance(data["cmd"], list):
+            self.cmd = data["cmd"]
+            # TODO: check if each list item is actually a string
+        else:
+            raise TypeError("invalid type of key `cmd'")
+        del data["cmd"]
 
-        fd, exec = mkstemp()
-        with fdopen(fd, "wt") as f:
-            f.write(b.content)
-        chmod(exec, 0o700)
+    def transform(self):
+        assert len(self.cmd) > 0
 
-        proc = run((str(exec),), text=True, input=a.content, capture_output=True, check=True)
-        b.content = proc.stdout
+        input = self.target.get_file(self.input_spec)
 
-        unlink(exec)
+        if input.content is None:
+            input.content = ""
+        if isinstance(input.content, str):
+            input.content = input.content.encode()
+        proc = run(self.cmd, input=input.content, stdout=PIPE, check=True)
+        input.content = proc.stdout
 
-        return b
+        return input
 
 
-class ProcessMerge(Process):
+class MergeProcess(Process):
     """
     Merge transformer.
     """
@@ -186,31 +221,26 @@ class ProcessMerge(Process):
 
         add_lines = set(lines_b) - set(lines_a)
 
-        b.content = "\n".join((*lines_a, *add_lines))
+        return File(mode=a.mode, content="\n".join((*lines_a, *add_lines)))
 
-        return b
-
-    strategies: dict[str, Callable[[ProcessMerge, File, File], File]] = {
+    strategies: dict[str, Callable[[MergeProcess, File, File], File]] = {
         "ignore": merge_ignore,
     }
 
-    strategy: Callable[[ProcessMerge, File, File], File]
+    strategy: Callable[[MergeProcess, File, File], File] | None = None
 
-    def __init__(self, *args, **kwargs):
-        super(ProcessMerge, self).__init__(*args, **kwargs)
+    def __init__(self, target, data):
+        super().__init__(target, data)
 
-        argv = self.args.argv
-        if len(argv) < 1:
-            raise Exception("not enough arguments")
+        if "strategy" not in data:
+            raise Exception("missing property `strategy'")
+        if data["strategy"] not in self.strategies:
+            raise Exception(f"unknown strategy {repr(data['strategy'])}")
+        self.strategy = self.strategies[data["strategy"]]
+        del data["strategy"]
 
-        if len(argv) > 1:
-            raise Exception("too many arguments")
-
-        strategy = argv[0]
-        if strategy not in self.strategies:
-            raise Exception(f"unknown merge strategy: `{strategy}'")
-
-        self.strategy = self.strategies[strategy]
-
-    def transform(self, a, b):
+    def transform(self):
+        a = self.target.get_file(self.input_spec)
+        b = self.target.get_file(self.target_spec)
+        assert self.strategy is not None
         return self.strategy(self, a, b)

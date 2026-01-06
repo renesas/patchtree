@@ -1,174 +1,112 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, IO, cast
+from typing import TYPE_CHECKING, IO, TextIO, cast
+
+import yaml
 
 from argparse import Namespace
 from pathlib import Path
-from zipfile import ZipInfo, is_zipfile
-from tempfile import TemporaryFile
-from os import path
-from sys import stdout, stderr
+from zipfile import is_zipfile
+from os import path, environ
+from sys import stdout
 from subprocess import run
-from zipfile import ZipFile
-from stat import S_IFDIR, S_IFREG
+from logging import Logger, getLogger as get_logger
+
+from yaml.events import DocumentEndEvent
+from yaml.nodes import MappingNode, ScalarNode
+
+from .diff import File
+from .spec import (
+    LiteralInputSpec,
+    PatchsetFileInputSpec,
+    ProcessInputSpec,
+    TargetFileInputSpec,
+)
+from .target import Target
+from .fs import FS, PERM_EXEC, DiskFS, ZipFS, MODE_FILE
 
 if TYPE_CHECKING:
-    from .config import Config
-
-ZIP_CREATE_SYSTEM_UNX = 3
+    from .config import Config, Header
 
 
-class FS:
-    """Target filesystem interface."""
+class PatchspecLoader(yaml.Loader):
+    """
+    YAML loader for patch specifications.
+    """
 
-    target: Path
+    patch: File
+    """File content to parse."""
 
-    def __init__(self, target: Path):
-        self.target = target
+    input: Path
+    """Path to file content."""
 
-    def get_dir(self, dir: str) -> list[str]:
+    context: Context
+    """Parent context."""
+
+    input_specs: list[ProcessInputSpec] = []
+    """List of inputs used by this patch specification."""
+
+    @staticmethod
+    def tag_file_target(loader: PatchspecLoader, node: ScalarNode) -> TargetFileInputSpec:
+        target_root = loader.input.parent.relative_to(loader.context.root)
+        path = loader.construct_scalar(node)
+        if len(path) == 0:
+            path = loader.input.name
+        spec = TargetFileInputSpec(path=target_root.joinpath(Path(path)))
+        loader.input_specs.append(spec)
+        return spec
+
+    @staticmethod
+    def tag_file_input(loader: PatchspecLoader, node: ScalarNode) -> PatchsetFileInputSpec:
+        input_root = loader.input.parent
+        path = loader.construct_scalar(node)
+        if len(path) == 0:
+            path = loader.input.name
+        spec = PatchsetFileInputSpec(path=input_root.joinpath(Path(path)))
+        loader.input_specs.append(spec)
+        return spec
+
+    @staticmethod
+    def tag_patchspec(loader: PatchspecLoader, node: MappingNode) -> Target:
+        data = loader.construct_mapping(node, deep=True)
+        target_cls = loader.context.config.target
+        target = target_cls(
+            loader.context, loader.input.relative_to(loader.context.root), data
+        )
+        target.inputs += loader.input_specs
+        return target
+
+    def __init__(self, context: Context, patch: File, input: Path):
+        self.context = context
+        self.patch = patch
+        self.input = input
+
+        super().__init__(self.patch.get_str())
+
+        self.add_constructor("!patchspec", self.tag_patchspec)
+        self.add_constructor("!target", self.tag_file_target)
+        self.add_constructor("!input", self.tag_file_input)
+
+    def parse(self) -> Target:
         """
-        List all items in a subdirectory of the target.
+        Read the provided patch content and return a valid Target.
 
-        :returns: A list of all item names.
+        This method will raise an exception if the provided input is not a patchspec.
+        This method also removes the patchspec YAML header from the input patch file's content
+        if a valid patchspec was read.
         """
-
-        raise NotImplementedError()
-
-    def get_content(self, file: str) -> bytes | str | None:
-        """
-        Get the content of a file relative to the target.
-
-        :returns:
-          * The file content if it exists.
-          * None if the file does not exist.
-        """
-
-        raise NotImplementedError()
-
-    def get_mode(self, file: str) -> int:
-        """
-        Get the mode of a file relative to the target.
-
-        :returns:
-          * The mode as returned by stat(3)'s ``stat.st_mode``
-          * 0 if the file does not exist
-        """
-
-        raise NotImplementedError()
-
-
-class DiskFS(FS):
-    """Implementation of :any:`FS` for a regular directory. Reads directly from the disk."""
-
-    def __init__(self, target):
-        super(DiskFS, self).__init__(target)
-
-    def get_dir(self, dir):
-        here = self.target.joinpath(dir)
-        return [path.name for path in here.iterdir()]
-
-    def get_content(self, file):
-        here = self.target.joinpath(file)
-        if not here.exists():
-            return None
-        bytes = here.read_bytes()
         try:
-            return bytes.decode()
-        except:
-            return bytes
+            data = self.get_data()
+            if not isinstance(data, Target):
+                raise Exception("provided yaml is not a patchspec")
 
-    def get_mode(self, file):
-        here = self.target.joinpath(file)
-        if not here.exists():
-            return 0
-        return here.stat().st_mode
+            # strip frontmatter from input content if it exists
+            events = yaml.parse(self.patch.get_str())
+            end = next(ev for ev in events if isinstance(ev, DocumentEndEvent))
+            self.patch.content = self.patch.get_str()[end.end_mark.index :].lstrip()
 
-
-class ZipFS(FS):
-    """Implementation of :any:`FS` for zip files. Reads directly from the archive."""
-
-    zip: ZipFile
-    """Underlying zip file."""
-
-    files: dict[Path, ZipInfo] = {}
-    """Map of path -> ZipInfo for all files in the archive."""
-
-    def __init__(self, target):
-        super(ZipFS, self).__init__(target)
-        self.zip = ZipFile(str(target))
-        for info in self.zip.infolist():
-            self.files[Path(info.filename)] = info
-        # todo: index implicit directories in tree
-
-    def get_info(self, path: str) -> ZipInfo | None:
-        """
-        Get the ZipInfo for a file in the archive
-
-        :returns:
-          * The ZipInfo for the file at ``path``
-          * None if the file does not exist
-        """
-
-        return self.files.get(Path(path), None)
-
-    def get_dir(self, dir):
-        items: set[str] = set()
-        dir = path.normpath("/" + dir)
-        for zip_dir in self.zip.namelist():
-            zip_dir = path.normpath("/" + zip_dir)
-            if not zip_dir.startswith(dir):
-                continue
-            if zip_dir == dir:
-                continue
-            relative = path.relpath(zip_dir, dir)
-            top_level = relative.split("/")[0]
-            items.add(top_level)
-        return list(items)
-
-    def get_content(self, file):
-        info = self.get_info(file)
-        if info is None:
-            return None
-        bytes = self.zip.read(info)
-        try:
-            return bytes.decode()
-        except:
-            return bytes
-
-    def is_implicit_dir(self, file: str) -> bool:
-        """
-        Check if there is an implicit directory at ``file``.
-
-        Some zip files may not include entries for all directories if they already define entries for files or
-        subdirectories within. This function checks if any path that is a subdirectory of ``file`` exists.
-
-        :returns: ``True`` if there is a directory at ``file``, else ``False``.
-        """
-
-        parent = Path(file)
-        for child in self.files:
-            if parent in child.parents:
-                return True
-        return False
-
-    def get_mode(self, file):
-        MODE_NONEXISTANT = 0
-        MODE_FILE = 0o644 | S_IFREG
-        MODE_DIR = 0o755 | S_IFDIR
-
-        info = self.get_info(file)
-        if info is None:
-            # if self.is_implicit_dir(file):
-            #     return MODE_DIR
-            return MODE_NONEXISTANT
-
-        if info.create_system == ZIP_CREATE_SYSTEM_UNX:
-            return (info.external_attr >> 16) & 0xFFFF
-
-        if info.is_dir():
-            return MODE_DIR
-
-        return MODE_FILE
+            return data
+        finally:
+            self.dispose()
 
 
 class Context:
@@ -186,45 +124,51 @@ class Context:
        The ``root`` member only changes the appearance of paths. All internal logic uses the "real" paths.
     """
 
-    target: Path
-    """Path to target."""
+    header: Header
+    """Patch header instance."""
 
-    fs: FS
+    content: list[Target] = []
+    """Patch targets (content)."""
+
+    target_fs: FS
     """Target file system interface."""
 
-    output: IO
-    """Output stream for writing the clean patch."""
+    patchset_fs: FS
+    """Target file system interface."""
 
     in_place: bool
     """Whether to apply the changes directly to the target instead of outputting the .patch file."""
 
     config: Config
+    """Configuration class instance."""
+
+    log: Logger
+    """Global log instance reference."""
+
+    is_empty: bool = False
+    """Whether the output patch delta does not include any changes. Updated by :any:`make_patch`."""
+
+    output: IO
+    """Output IO stream used to write output patch to."""
 
     def __init__(self, config: Config, options: Namespace):
         self.config = config
+        self.log = get_logger(self.__class__.__name__)
 
         self.root = options.root
-        self.target = options.target
         self.in_place = options.in_place
+
+        # NOTE: this should NOT be options.root because input filenames are treated as relative
+        # to the working directory by default (i.e. --root applies *after* the inputs are
+        # collected)
+        self.patchset_fs = DiskFS(Path("."))
+        self.target_fs = self._get_target_fs(options.target)
+
         self.inputs = self.collect_inputs(options)
+        self.content = self.collect_targets(self.inputs)
 
-        self.fs = self.get_fs()
-        self.output = self.get_output(options)
-
-        if self.in_place:
-            self.apply(True)
-
-    def close(self):
-        """Finish writing the clean patch file and close it."""
-
-        # patch must have a trailing newline
-        self.output.write("\n")
-        self.output.flush()
-
-        if self.in_place:
-            self.apply(False)
-
-        self.output.close()
+        self.output = self._get_output(options)
+        self.header = config.header(config, self)
 
     def collect_inputs(self, options: Namespace) -> list[Path]:
         """
@@ -253,26 +197,101 @@ class Context:
                 inputs.add(path)
             return list(inputs)
 
-    def get_dir(self, dir: str) -> list[str]:
-        """Get a target directory's content (see :any:`FS.get_dir()`)"""
-        return self.fs.get_dir(dir)
+    def create_target(self, input: Path, meta_inputs: list[Path] = []) -> Target:
+        """Create a target instance from an input path."""
+        file = input.relative_to(self.root)
+        target: Target | None = None
+        patch = self.patchset_fs.get_file(PatchsetFileInputSpec(path=input))
+        target_cls = self.config.target
 
-    def get_content(self, file: str) -> bytes | str | None:
-        """Get a target file's content (see :any:`FS.get_content()`)"""
-        return self.fs.get_content(file)
+        try:
+            patch.get_str()
+        except:
+            # binary files can't be patchspecs
+            target = target_cls(self, file)
 
-    def get_mode(self, file: str) -> int:
-        """Get a target file's mode (see :any:`FS.get_mode()`)"""
-        return self.fs.get_mode(file)
+        # if the input is a yaml file, try to load it
+        if target is None and input.suffix in self.config.patchspec_extensions:
+            try:
+                loader = PatchspecLoader(self, patch, input.parent.joinpath(input.stem))
+                target = loader.parse()
+                self.log.info(f"found direct yaml patchspec: {input}")
+            except Exception as e:
+                self.log.error(f"while parsing patchspec for {input}: {e}")
+                raise e
 
-    def get_fs(self) -> FS:
+        # try to load any frontmatter if we still don't have a target
+        if target is None:
+            try:
+                loader = PatchspecLoader(self, patch, input)
+                target = loader.parse()
+                self.log.info(f"found frontmatter patchspec: {input}")
+            except Exception as e:
+                # exceptions while parsing frontmatter can be ignored silently since not all
+                # files will have them
+                target = None
+
+        if target is None:
+            self.log.info(f"treating as literal input: {input}")
+            target = target_cls(self, file)
+
+        target.patch = patch
+
+        for input in (i.path for i in target.inputs if isinstance(i, PatchsetFileInputSpec)):
+            meta_inputs.append(input)
+
+        return target
+
+    def collect_targets(self, inputs: list[Path]) -> list[Target]:
+        """
+        Create a list of targets and automatically resolve any patchspec naming conflicts.
+
+        This function creates a list of targets from the input paths, and ensures no standalone
+        patchspecs or files referenced as inputs by any patchspecs are still treated as literal
+        inputs.
+
+        :returns:
+            List of targets to process for final clean patch.
+        """
+
+        meta_inputs: set[Path] = set()
+        targets: dict[Path, Target] = {}
+
+        for input in inputs:
+            meta = []
+            targets[input] = self.create_target(input, meta)
+            meta_inputs.update(meta)
+
+        missing = meta_inputs - set(inputs)
+        if len(missing) > 0:
+            for input in missing:
+                self.log.error(f"{str(input)} referenced by patchspec but not in inputs")
+            raise Exception("missing files")
+
+        # files referenced as meta inputs shouldn't be treated as verbatim files
+        for key in meta_inputs:
+            if key not in targets:
+                continue
+            del targets[key]
+
+        return sorted(targets.values(), key=lambda target: target.file)
+
+    def get_file(self, spec: ProcessInputSpec) -> File:
+        if isinstance(spec, LiteralInputSpec):
+            return File(content=spec.content, mode=MODE_FILE)
+        elif isinstance(spec, TargetFileInputSpec):
+            return self.target_fs.get_file(spec)
+        elif isinstance(spec, PatchsetFileInputSpec):
+            return self.patchset_fs.get_file(spec)
+
+        raise Exception(f"unable to read file: {spec}")
+
+    def _get_target_fs(self, target: Path) -> FS:
         """
         Open the selected target, taking into account the --in-place option.
 
         :returns: Target filesystem interface.
         """
-        target = self.target
-
         if not target.exists():
             raise Exception(f"cannot open `{target}'")
 
@@ -284,18 +303,18 @@ class Context:
                 raise Exception("cannot edit zip in-place!")
             return ZipFS(target)
 
-        raise Exception("cannot read `{target}'")
+        raise Exception(f"cannot read `{target}'")
 
-    def get_output(self, options: Namespace) -> IO:
+    def _get_output(self, options: Namespace) -> IO:
         """
         Open the output stream, taking into account the --in-place and --out options.
 
         :returns: Output stream.
         """
-        if self.in_place:
+        if options.in_place:
             if options.out is not None:
-                print("warning: --out is ignored when using --in-place", file=stderr)
-            return TemporaryFile("w+")
+                self.log.warning("--out is ignored when using --in-place")
+            return TextIO()
 
         if options.out is not None:
             if options.out == "-":
@@ -312,28 +331,58 @@ class Context:
         :returns: Command argument vector.
         """
 
-        cmd = ["git", "apply", "--allow-empty"]
+        cmd = ["git", "apply"]
+        if self.is_empty:
+            cmd.append("--allow-empty")
         if self.config.diff_context == 0:
             cmd.append("--unidiff-zero")
         return cmd
+
+    def make_patch(self) -> str:
+        """
+        Generate a clean patch using the header configuration and deltas from all targets.
+
+        :returns:
+          Clean patch contents
+        """
+        patch = ""
+        for target in self.content:
+            patch += target.write()
+
+        self.is_empty = len(patch) == 0
+
+        patch = self.header.write() + patch
+
+        # patch must have a trailing newline
+        patch += "\n"
+        return patch
 
     def apply(self, reverse: bool) -> None:
         """
         Apply the patch in ``self.output`` and update the cache or reverse the patch in the cache.
         """
 
-        location = cast(DiskFS, self.fs).target
+        location = cast(DiskFS, self.target_fs).target
         cache = location.joinpath(".patchtree.diff")
-        cmd = self.get_apply_cmd()
+        cmd = [str(cache.absolute())]
 
         if reverse:
             if not cache.exists():
                 return
             cmd.append("--reverse")
         else:
-            self.output.seek(0)
-            patch = self.output.read()
+            patch = self.make_patch()
             cache.write_text(patch)
+            cache.chmod(MODE_FILE | PERM_EXEC)
 
-        cmd.append(str(cache.absolute()))
         run(cmd, cwd=str(location.absolute()))
+        if reverse:
+            cache.unlink()
+
+    def write(self) -> None:
+        """
+        Write the clean patch to the selected output and close the output stream.
+        """
+        patch = self.make_patch()
+        self.output.write(patch)
+        self.output.close()

@@ -1,3 +1,13 @@
+.. raw:: html
+
+   <style>
+   td {
+     white-space: normal !important;
+     vertical-align: unset !important;
+   }
+   </style>
+
+
 ##############
 Developer docs
 ##############
@@ -46,6 +56,9 @@ Nomenclature
    patchset
      A set of files that describe how to change the target source tree(s), placed in the same structure as the original source tree.
 
+   patchspec
+     A YAML specification that configures how patchtree should handle (other) inputs.
+
    patch
      A single file (usually ``.patch`` or ``.diff``) that lists changes to make to one specific target directory.
 
@@ -56,7 +69,7 @@ Building clean patches
 In order to generate clean patches files, patchtree needs
 
 * the (original) :term:`target` source tree (either as a folder or .zip file)
-* a set of :term:`inputs`
+* a set of :term:`inputs` (i.e. the patchset)
 
 The basic syntax of the patchtree CLI is as follows:
 
@@ -67,36 +80,114 @@ The basic syntax of the patchtree CLI is as follows:
 By default, the resulting patch is written to the standard output.
 This behavior, along with many other default behaviors can be changed through the command-line arguments (see ``--help``) or the `configuration file <ptconfig_>`_.
 
-************************
-Writing patchset sources
-************************
+.. _patchspec:
 
-Each patchset source file is compared to the target source file of the same name, and the resulting diff is output in the clean patch.
+***********************
+Writing patchset inputs
+***********************
+
+Each patchset input file is compared using difflib's unified_diff algorithm to the target source file of the same name, and the resulting diff is output in the clean patch.
 This means that the default behavior of files placed in the patchset is to add or replace any file in the target source tree.
+Because most of the time only small adjustments have to be made to the target sources, patchtree implements mechanisms for semantically describing what changes should be applied.
+This is achieved by writing a :term:`patchspec`, which is located either at the start of a patchset input file or as a standalone .yml file in the patchset tree.
 
-Because most of the time only small adjustments have to be made to the target sources, patchtree uses so-called processors.
-Every patchset source is first processed by 0 or more processors, which transform the input's content before it is compared to the target file's content.
-This mechanism allows you to describe changes *semantically* so they can apply to multiple versions of-- or variations in the target.
+.. code-block:: yaml
+   :caption: Patchspec header
 
+   --- !patchspec
+   foo: bar
+   ...
+
+   remaining file content
+
+.. note::
+
+   While patchspec headers look similar to `front matter <https://frontmatter.codes>`_, they are actually regular YAML documents (and must therefore be delimited from the remaining file content using ``...`` instead of ``---``).
+   Any valid YAML document at the beginning of a file which explicitly defines a patchspec (using the ``!patchspec`` tag) is processed.
+   If a YAML file is present in the patchset but does not define a patchspec, it will be treated as any other text file!
+
+.. code-block:: yaml
+   :caption: Standalone patchspec
+
+   !patchspec
+   foo: bar
+
+The output from standalone patchspecs are compared against the file in the target of the same name **after the .yml/.yaml extension is removed**.
+The file extensions trimmed from standalone patchspecs can be configured using the `configuration file <ptconfig_>`_'s :any:`patchspec_extensions <Config.patchspec_extensions>` value.
+Note that a file must both have an extension from the aforementioned list as well as contain a valid patchspec in order to be handled as non-literal input.
+
+=========
+YAML tags
+=========
+
+In addition to the default tags supported by `PyYAML <https://pyyaml.org/>`_, patchtree supports the following tags:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - YAML type
+     - Description
+   * - ``!patchspec``
+     - mapping
+     - Provides patchspec type and value validation and is required in order to make patchtree use the patchspec.
+   * - ``!target``
+     - scalar
+     - Input specification for a file in the target.
+       If no filename is passed to this tag, the current filename is used.
+       Creates a :any:`TargetFileInputSpec`.
+   * - ``!input``
+     - scalar
+     - Input specification for a file in the patchset (relative to current file).
+       If no filename is passed to this tag, the current filename is used.
+       Creates a :any:`PatchsetFileInputSpec`.
+
+       .. note::
+
+          Files specified using ``!input`` are no longer treated as a literal (unprocessed) input and will not be compared to a target file of the same name.
+
+
+================
+Patchspec format
+================
+
+The patchspec format currently takes the following keys:
+
+.. code-block:: yaml
+
+   !patchspec
+   # List of processors to apply (in order defined)
+   processors: list[Processor]()
+
+
+.. _patchspec_tags:
+
+==========
 Processors
 ==========
 
-Processors are indicated using the hash symbol (``#``) in the filename, and each process the input's contents in a chain.
-Processors may optionally take argument(s) separated by a comma (``,``), and arguments may optionally take a value delimited by an equal sign (``=``)
-After processing, the resulting file content is compared to the target source's content using difflib's unified_diff algorithm.
+Every patchset source is first processed by 0 or more processors, which transform the input's content before it is compared to the target file's content.
+This mechanism allows you to describe changes *semantically* so they can apply to multiple versions of-- or variations in the target.
 
-For example:
+Each processor takes an input and output similar to the standard input/output of command-line processes.
+The only difference with patchtree is that the input/output is file-based, and carries metadata about the file's mode and whether it is binary or not.
+The processors can be thought of as piped commands in the sense that (by default) each processor's input is either (a) the content of the patchset file for the first processor, or (b) the output received from the previous processor.
+Some processors also take secondary input(s), usually under the name *target*.
 
-.. code:: none
+For each process, the input and/or target can be manually specified using an *input spec*.
+The input spec's default value is to use the output of the previous processor.
+It can also be set to a constant string (inside the YAML patchspec) or an existing file inside the patchset or target using YAML tags (see :ref:`patchspec_tags`).
 
-   sdk/middleware/adapters/src/ad_crypto.c#cocci#jinja
-   \_____________________________________/\__________/
-           target source file path         processors
+As an example, the following patchspec will set the mode of the file it is named as (with an added .yml extension) to 755 (executable):
 
-In the above example, the input is first processed by :ref:`jinja <process_jinja>`, and the resulting file content is piped into :ref:`Coccinelle <process_cocci>` as if a file with the output from jinja existed under the name ``ad_crypto.c#cocci``.
-Coccinelle will in this case output a modified copy of ``ad_crypto.c``, which will be compared to the original to produce the diff for this file.
+.. code-block:: yaml
 
-The processors included with patchtree are documented on the :ref:`processors` page.
+   !patchspec
+   processors:
+     - id: touch
+       mode: 0755
+
+The processors included with patchtree, including any configuration options they take, are documented on the :ref:`processors` page.
 Custom processors can be created by inheriting from the base :any:`Process` class and registering through the `configuration file <ptconfig_>`_'s :any:`processors <Config.processors>` value.
 
 .. _ptconfig:

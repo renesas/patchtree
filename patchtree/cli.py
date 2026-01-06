@@ -2,6 +2,8 @@ from dataclasses import fields
 from sys import stderr
 from pathlib import Path
 from argparse import ArgumentTypeError
+from logging import basicConfig as log_config, addLevelName as log_add_level_name
+from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 from .context import Context
 from .config import Config
@@ -62,8 +64,8 @@ def parse_arguments(config: Config) -> Context:
         type=int,
     )
     parser.add_argument(
-        "-s",
-        "--shebang",
+        "-S",
+        "--no-shebang",
         help="output shebang in resulting patch",
         action="store_true",
     )
@@ -100,8 +102,8 @@ def parse_arguments(config: Config) -> Context:
     if options.context is not None:
         config.diff_context = options.context
 
-    if options.shebang:
-        config.output_shebang = True
+    if options.no_shebang:
+        config.no_shebang = True
 
     if len(options.patch) == 0:
         options.patch = config.default_patch_sources
@@ -109,25 +111,30 @@ def parse_arguments(config: Config) -> Context:
     try:
         return config.context(config, options)
     except Exception as e:
-        parser.error(str(e))
+        raise e
 
 
 def main():
+    log_add_level_name(DEBUG, "DBG")
+    log_add_level_name(INFO, "INF")
+    log_add_level_name(WARNING, "WRN")
+    log_add_level_name(ERROR, "ERR")
+    log_add_level_name(CRITICAL, "CRT")
+    log_config(
+        stream=stderr,
+        level=WARNING,
+        format="[%(levelname)s] %(message)s",
+    )
+
     config = load_config()
 
     context = parse_arguments(config)
 
-    if len(context.inputs) == 0:
-        print("no files to patch!", file=stderr)
-        return 0
-
-    config.header(config, context)
-
-    for file in context.inputs:
-        patch = config.patch(config, file)
-        patch.write(context)
-
-    context.close()
+    if context.in_place:
+        context.apply(True)
+        context.apply(False)
+    else:
+        context.write()
 
     return 0
 

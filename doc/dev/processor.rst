@@ -5,25 +5,28 @@ Processors
 ##########
 
 This page lists all built-in processor types along with descriptions of what they do and which options they take.
-On this page, **output** refers to what the processor returns, while **input** refers to how the processor treats its input.
-This input is either (a) the content of the patchset file for the first processor, or (b) the output received from the previous processor.
-**Arguments** are any options explicitly given to the processor through the filename, e.g. ``filename#processor,arg,arg2=value,arg3#processor2``.
-Note that some processors may take positional arguments, while others may use key/value based options instead.
 
-.. _process_id:
+.. _process_touch:
 
-********
-Identity
-********
+*****
+Touch
+*****
 
-The identity processor is used to "touch" files, change the mode of existing files, or add arbitrary identifiers to patchset source filenames by passing arbitrary arguments.
+The touch processor is used to create files (similar to ``touch``) or change the mode of existing files (similar to ``chmod``).
 
-:Class: :any:`ProcessIdentity`
-:Identifier: ``id``
-:Input: Ignored.
+:Class: :any:`TouchProcess`
+:Input: Content of new file.
 :Output:
-  A file with the *content* of the target file and *mode* of the patchset input.
-:Arguments: Any arguments passed to this processor are ignored.
+  The input file as-is, with the following exceptions:
+
+  - If the input is empty, it will be set to an empty (but existent) file.
+  - If the ``mode`` option is set, it will be used instead of the input mode.
+:Options:
+  .. code-block:: yaml
+
+     - id: "touch"
+       input: ProcessInputSpec(required=False)
+       mode: int(required=False, default=<input mode>)
 
 .. _process_cocci:
 
@@ -37,11 +40,17 @@ The Coccinelle processor uses Coccinelle to apply patch(es) in the SmPL (Semanti
 
    In order to use this processor, Coccinelle must be installed and ``spatch`` must be available in ``$PATH``.
 
-:Class: :any:`ProcessCoccinelle`
-:Identifier: ``cocci``
+:Class: :any:`CoccinelleProcess`
 :Input: Coccinelle's SmPL input.
-:Output: The contents of the target file after being processed by Coccinelle (not the diff returned by Coccinelle).
-:Arguments: Reserved.
+:Target: File content to apply patch to (current patchspec's target file by default).
+:Output: The content of the target file after being processed by Coccinelle (not the diff returned by Coccinelle).
+:Options:
+  .. code-block:: yaml
+
+     - id: "cocci"
+       input: ProcessInputSpec(required=False)
+       target: ProcessInputSpec(required=False)
+
 
 .. _process_jinja:
 
@@ -51,16 +60,19 @@ Jinja template
 
 The Jinja processor passes the input through the Jinja2 templating engine.
 
-:Class: :any:`ProcessJinja2`
-:Identifier: ``jinja``
+:Class: :any:`Jinja2Process`
 :Input: Jinja template code.
 :Output: The input after being processed by Jinja.
-:Arguments: Reserved.
+:Options:
+  .. code-block:: yaml
+
+     - id: "jinja"
+       input: ProcessInputSpec(required=False)
 
 .. note::
 
-   Template variables are generated through the :any:`get_template_vars <ProcessJinja2.get_template_vars>` method.
-   This method returns an empty dict by default, and is meant to be implemented by implementing a custom class that derives from ProcessJinja2 and registering it through the :ref:`configuration file <ptconfig>`.
+   Template variables are generated through the :any:`get_template_vars <Jinja2Process.get_template_vars>` method.
+   This method returns an empty dict by default, and is meant to be implemented by implementing a custom class that derives from :any:`Jinja2Process` and registering it through the :ref:`configuration file <ptconfig>`.
 
 .. _process_exe:
 
@@ -68,19 +80,21 @@ The Jinja processor passes the input through the Jinja2 templating engine.
 Executable
 **********
 
-The executable processor runs the input as an executable, passes the target file to its standard input, and returns its standard output.
+The executable processor passes its input to an executable and returns its standard output.
 
-:Class: :any:`ProcessExec`
-:Identifier: ``exec``
-:Input:
-  Executable script.
-
-  .. important::
-
-     The executable *must* contain a shebang line to specify what interpreter to use.
-
+:Class: :any:`ExecProcess`
+:Input: Input passed to the standard input of the command.
 :Output: Any content written to the standard output by the executable.
-:Arguments: Reserved.
+:Options:
+  .. code-block:: yaml
+
+     - id: "exec"
+       cmd: str() | list[str]()
+       input: ProcessInputSpec(required=False)
+
+  .. note::
+
+     If the ``cmd`` option is a string, it is split **using shell syntax rules**.
 
 .. _process_merge:
 
@@ -90,13 +104,21 @@ Merge
 
 The merge processor merges the input with the target file, such that changes are combined with the target instead of replacing the target.
 
-:Class: :any:`ProcessMerge`
-:Identifier: ``merge``
-:Input: Content to merge.
+:Class: :any:`MergeProcess`
+:Input: Content to merge (A).
+:Target: Content to merge (B).
 :Output: Merged changes.
-:Arguments: Positional.
+:Options:
+  .. code-block:: yaml
 
-  1. Merge strategy:
+     - id: "merge"
+       strategy: enum() # see below
+       input: ProcessInputSpec(required=False)
+       target: ProcessInputSpec(required=False)
 
-     ``ignore``
-       Appends all lines from the input to the output excluding any lines already present in the output.
+==========
+Strategies
+==========
+
+``ignore``
+  Appends all lines from *input* to *target*, excluding any lines already present in *target*.

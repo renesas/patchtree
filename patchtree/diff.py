@@ -10,10 +10,10 @@ if TYPE_CHECKING:
 
 @dataclass
 class File:
-    content: str | bytes | None
+    content: str | bytes | None = None
     """The file's contents, or ``None`` if it does not exist."""
 
-    mode: int
+    mode: int = 0
     """The file's mode as returned by stat(3)'s ``stat.st_mode``."""
 
     def is_binary(self) -> bool:
@@ -21,6 +21,26 @@ class File:
         :returns: A boolean representing whether this file's content is binary.
         """
         return isinstance(self.content, bytes)
+
+    def get_str(self) -> str:
+        """
+        Get the file content as a string.
+
+        This function raises an Exception if the file is binary.
+
+        :returns:
+          * An empty string if the file is empty.
+          * The contents if the file is already open in text mode.
+          * The system locale decoded representation of the file content.
+        """
+        if self.content is None:
+            return ""
+        if isinstance(self.content, bytes):
+            try:
+                self.content = self.content.decode()
+            except Exception:
+                raise Exception("expected text file instead of binary")
+        return self.content
 
     def lines(self) -> list[str]:
         """
@@ -34,16 +54,20 @@ class File:
 
            This function only works for text files. Use :any:`is_binary` to check this safely.
         """
-        assert not isinstance(self.content, bytes)
-        return (self.content or "").splitlines()
+        return self.get_str().splitlines()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(mode={self.mode:06o}, content={repr(self.content)})"
 
 
 class Diff:
     """
-    Produce a regular diff from the (possibly absent) original file to the file in the patch input tree.
+    Produce a diff between two files.
+    Either file may be absent, in which case extended header lines understood by ``git apply`` are generated.
     """
 
     config: Config
+
     file: str
     """Path to file relative to target dir."""
 
@@ -60,7 +84,7 @@ class Diff:
     def compare(self) -> str:
         """
         Generate delta in "git-diff-files -p" format (see
-        `<https://git-scm.com/docs/diff-format#generate_patch_text_with_p>`_)
+        `<https://git-scm.com/docs/diff-format#generate_patch_text_with_p>`_).
         """
         a = self.a
         b = self.b
@@ -86,12 +110,17 @@ class Diff:
             delta += f"new mode {b.mode:06o}\n"
 
         if a.content != b.content:
-            # make sure a file doesn't switch from text to binary or vice versa
-            assert a.is_binary() == b.is_binary()
+            binary = False
+            lines_a = []
+            lines_b = []
 
-            if not b.is_binary():
+            try:
                 lines_a = a.lines()
                 lines_b = b.lines()
+            except Exception:
+                binary = True
+
+            if not binary:
                 diff = unified_diff(
                     lines_a, lines_b, fromfile, tofile, lineterm="", n=self.config.diff_context
                 )

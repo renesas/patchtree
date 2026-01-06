@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "patchtree"
 description = "generate clean patches for external source trees"
-version = "0.1.1"
+version = "1.0.0"
 authors = [
 	{ name="Loek Le Blansch", email="loek.le-blansch.pv@renesas.com" },
 ]
@@ -15,10 +15,11 @@ license = "MIT"
 license-files = ["license"]
 dependencies = [
 	"jinja2",
+	"PyYAML",
 ]
 
 [project.urls]
-Homepage = "https://bitbucket.global.renesas.com/users/loek.le-blansch.pv_renesas.com/repos/patchtree"
+Homepage = "https://github.com/renesas/patchtree"
 
 [project.scripts]
 patchtree = "patchtree.cli:main"
