@@ -59,6 +59,21 @@ class File:
     def __repr__(self):
         return f"{self.__class__.__name__}(mode={self.mode:06o}, content={repr(self.content)})"
 
+    def __eq__(self, other):
+        if not isinstance(other, File):
+            return False
+        if self.mode != other.mode:
+            return False
+        a = self.content or b""
+        b = other.content or b""
+        if isinstance(a, str):
+            a = bytes(a, "utf-8")
+        if isinstance(b, str):
+            b = bytes(b, "utf-8")
+        if a != b:
+            return False
+        return True
+
 
 class Diff:
     """

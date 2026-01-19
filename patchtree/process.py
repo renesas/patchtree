@@ -189,11 +189,21 @@ class ExecProcess(Process):
         if isinstance(data["cmd"], str):
             self.cmd = split(data["cmd"])
         elif isinstance(data["cmd"], list):
-            self.cmd = data["cmd"]
-            # TODO: check if each list item is actually a string
+            self.cmd = self.argv_expand(data["cmd"])
         else:
             raise TypeError("invalid type of key `cmd'")
         del data["cmd"]
+
+    def argv_expand(self, args: list[Any]):
+        args_out = []
+        for arg in args:
+            if isinstance(arg, ProcessInputSpec):
+                args_out.append(str(arg.as_tmp()))
+                continue
+
+            # else, cast to string
+            args_out.append(str(arg))
+        return args_out
 
     def transform(self):
         assert len(self.cmd) > 0

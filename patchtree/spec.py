@@ -8,6 +8,9 @@ from pathlib import Path
 class ProcessInputSpec:
     """Processor input specification (abstract base)"""
 
+    def as_tmp(self):
+        raise NotImplementedError
+
 
 @dataclass
 class FileInputSpec(ProcessInputSpec):
@@ -24,6 +27,9 @@ class TargetFileInputSpec(FileInputSpec):
 @dataclass
 class PatchsetFileInputSpec(FileInputSpec):
     """Spec to use a file (referenced by name) in the patchset directory (concrete)"""
+
+    def as_tmp(self):
+        return self.path
 
 
 @dataclass
